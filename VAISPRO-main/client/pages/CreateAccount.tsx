@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   ArrowLeft,
   ArrowRight,
@@ -24,32 +25,136 @@ import {
   EyeOff,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { toast } from "sonner";
+import PhoneInput from "react-phone-input-2";
+import "react-phone-input-2/lib/style.css";
 import IntegrationsFooter from "@/components/auth/IntegrationsFooter";
 import AssociationPartners from "@/components/auth/AssociationPartners";
+import {
+  registerUser,
+  selectAuth,
+  selectIsLoading,
+  selectVerifyEmail,
+  clearError,
+} from "@/store/reducers/authSlice";
+import { registerSchema, type RegisterData } from "@/api/services/authService";
+import { AppDispatch } from "@/store";
 
 export default function CreateAccount() {
+  const dispatch = useDispatch<AppDispatch>();
+  const navigate = useNavigate();
+  const { isLoading, error } = useSelector(selectAuth);
+  const verifyEmail = useSelector(selectVerifyEmail);
+  
   const [mounted, setMounted] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const [focusedField, setFocusedField] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const navigate = useNavigate();
+  const [isCheckboxChecked, setIsCheckboxChecked] = useState(false);
+
+  // Get business email from Redux state
+  const getBusinessEmail = verifyEmail.regEmailInfo?.email || "";
+
+  // React Hook Form setup
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isValid, isDirty },
+    setValue,
+    watch,
+  } = useForm<RegisterData>({
+    resolver: zodResolver(registerSchema),
+    defaultValues: {
+      first_name: "",
+      last_name: "",
+      username: getBusinessEmail,
+      phone_number: "",
+      company: "",
+      password: "",
+      re_password: "",
+      designation: "",
+      workAddress: "",
+      country: "",
+      linkedIn: "",
+      latitude: "",
+      longitude: "",
+    },
+  });
+
+  const watchedPassword = watch("password");
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    await new Promise((r) => setTimeout(r, 800));
-    setIsLoading(false);
-    let email = "";
+  // Redirect if no email in state
+  useEffect(() => {
+    if (!getBusinessEmail) {
+      navigate("/free-trial");
+    }
+  }, [getBusinessEmail, navigate]);
+
+  // Set email from Redux state
+  useEffect(() => {
+    if (getBusinessEmail) {
+      setValue("username", getBusinessEmail);
+    }
+  }, [getBusinessEmail, setValue]);
+
+  // Clear errors on unmount
+  useEffect(() => {
+    return () => {
+      dispatch(clearError());
+    };
+  }, [dispatch]);
+
+  const onSubmit = async (data: RegisterData) => {
+    if (!isCheckboxChecked) {
+      toast.error("Please agree to the Terms & Conditions and Privacy Policy");
+      return;
+    }
+
     try {
-      email = localStorage.getItem("signupEmail") || "";
-    } catch (e) {}
-    navigate("/email-verification", { state: { email } });
+      const result = await dispatch(registerUser(data));
+      
+      if (result.type === "auth/register/fulfilled") {
+        // Set OTP timer for 3 minutes (180 seconds) in localStorage
+        const timerEndTime = new Date().getTime() + 180 * 1000;
+        localStorage.setItem("otpTimerEndTime", timerEndTime.toString());
+        
+        // Navigate to email verification
+        navigate("/email-verification");
+      } else if (result.type === "auth/register/rejected") {
+        const errorMessage = result.payload as string;
+        if (errorMessage.includes("already exists")) {
+          toast.error("Account already exists. Please try logging in instead.");
+        } else {
+          toast.error(errorMessage);
+        }
+      }
+    } catch (error) {
+      console.error("Registration error:", error);
+      toast.error("Something went wrong. Please try again.");
+    }
   };
+
+  // Password strength indicator
+  const getPasswordStrength = (password: string) => {
+    let strength = 0;
+    if (password.length >= 8) strength += 1;
+    if (/[a-z]/.test(password)) strength += 1;
+    if (/[A-Z]/.test(password)) strength += 1;
+    if (/\d/.test(password)) strength += 1;
+    if (/[^a-zA-Z\d]/.test(password)) strength += 1;
+    return strength;
+  };
+
+  const passwordStrength = getPasswordStrength(watchedPassword || "");
+  const strengthLabels = ["Very Weak", "Weak", "Fair", "Good", "Strong"];
+  const strengthColors = ["bg-red-500", "bg-orange-500", "bg-yellow-500", "bg-blue-500", "bg-green-500"];
 
   const aiElements = [
     {
@@ -75,21 +180,6 @@ export default function CreateAccount() {
     },
   ];
 
-  const integrations = [
-    {
-      name: "Salesforce",
-      logo: "https://upload.wikimedia.org/wikipedia/commons/f/f9/Salesforce.com_logo.svg",
-      description: "CRM Integration",
-      color: "bg-blue-500",
-    },
-    {
-      name: "HubSpot",
-      logo: "https://www.hubspot.com/hubfs/HubSpot_Logos/HubSpot-Inversed-Favicon.png",
-      description: "Marketing Automation",
-      color: "bg-orange-500",
-    },
-  ];
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-valasys-gray-50 via-white to-valasys-orange/5 lg:grid lg:grid-cols-2 relative overflow-hidden">
       <div className="absolute inset-0 overflow-hidden">
@@ -108,47 +198,6 @@ export default function CreateAccount() {
             }}
           />
         ))}
-        <svg
-          className="absolute inset-0 w-full h-full opacity-10"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <defs>
-            <linearGradient
-              id="neural-gradient"
-              x1="0%"
-              y1="0%"
-              x2="100%"
-              y2="100%"
-            >
-              <stop offset="0%" stopColor="#FF6A00" stopOpacity="0.3" />
-              <stop offset="50%" stopColor="#1A73E8" stopOpacity="0.2" />
-              <stop offset="100%" stopColor="#00C48C" stopOpacity="0.3" />
-            </linearGradient>
-          </defs>
-          <path
-            d="M50,200 Q200,100 350,200 T650,200"
-            stroke="url(#neural-gradient)"
-            strokeWidth="2"
-            fill="none"
-            className="animate-pulse"
-          />
-          <path
-            d="M100,300 Q300,200 500,300 T800,300"
-            stroke="url(#neural-gradient)"
-            strokeWidth="1.5"
-            fill="none"
-            className="animate-pulse"
-            style={{ animationDelay: "1s" }}
-          />
-          <path
-            d="M0,400 Q200,300 400,400 T700,400"
-            stroke="url(#neural-gradient)"
-            strokeWidth="1"
-            fill="none"
-            className="animate-pulse"
-            style={{ animationDelay: "2s" }}
-          />
-        </svg>
       </div>
 
       <div
@@ -168,61 +217,71 @@ export default function CreateAccount() {
               <p className="text-sm text-valasys-gray-600">
                 Start your 5-day free trial to unlock actionable B2B insights.
               </p>
+              {getBusinessEmail && (
+                <p className="text-xs text-valasys-gray-500">
+                  Creating account for: <span className="font-medium">{getBusinessEmail}</span>
+                </p>
+              )}
             </CardHeader>
             <CardContent className="space-y-4">
-              <form onSubmit={handleSubmit} className="space-y-4">
+              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                {/* Name Fields */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label
-                      htmlFor="firstName"
+                      htmlFor="first_name"
                       className="text-valasys-gray-700 flex items-center space-x-1"
                     >
                       <User className="h-3 w-3" />
                       <span>First Name</span>
-                      <span aria-hidden="true" className="text-red-500 ml-1">
-                        *
-                      </span>
+                      <span className="text-red-500">*</span>
                     </Label>
                     <div className="relative">
                       <User
-                        className={`absolute left-3 top-3 h-4 w-4 transition-colors duration-200 ${focusedField === "firstName" ? "text-valasys-orange" : "text-valasys-gray-400"}`}
+                        className={`absolute left-3 top-3 h-4 w-4 transition-colors duration-200 ${focusedField === "first_name" ? "text-valasys-orange" : "text-valasys-gray-400"}`}
                       />
                       <Input
-                        id="firstName"
+                        id="first_name"
                         placeholder="John"
-                        required
-                        onFocus={() => setFocusedField("firstName")}
+                        {...register("first_name")}
+                        onFocus={() => setFocusedField("first_name")}
                         onBlur={() => setFocusedField(null)}
-                        className={`pl-10 border-valasys-gray-300 focus:border-valasys-orange focus:ring-valasys-orange/20 transition-all duration-200 ${focusedField === "firstName" ? "ring-1 ring-valasys-orange/30" : ""}`}
+                        className="pl-10 border-valasys-gray-300 focus:border-valasys-orange focus:ring-valasys-orange/20 transition-all duration-200"
                       />
+                      {errors.first_name && (
+                        <p className="text-red-500 text-xs mt-1">{errors.first_name.message}</p>
+                      )}
                     </div>
                   </div>
                   <div className="space-y-2">
                     <Label
-                      htmlFor="lastName"
+                      htmlFor="last_name"
                       className="text-valasys-gray-700 flex items-center space-x-1"
                     >
                       <User className="h-3 w-3" />
                       <span>Last Name</span>
-                      <span aria-hidden="true" className="text-red-500 ml-1">
-                        *
-                      </span>
+                      <span className="text-red-500">*</span>
                     </Label>
                     <div className="relative">
                       <User
-                        className={`absolute left-3 top-3 h-4 w-4 transition-colors duration-200 ${focusedField === "lastName" ? "text-valasys-orange" : "text-valasys-gray-400"}`}
+                        className={`absolute left-3 top-3 h-4 w-4 transition-colors duration-200 ${focusedField === "last_name" ? "text-valasys-orange" : "text-valasys-gray-400"}`}
                       />
                       <Input
-                        id="lastName"
+                        id="last_name"
                         placeholder="Doe"
-                        required
-                        onFocus={() => setFocusedField("lastName")}
+                        {...register("last_name")}
+                        onFocus={() => setFocusedField("last_name")}
                         onBlur={() => setFocusedField(null)}
-                        className={`pl-10 border-valasys-gray-300 focus:border-valasys-orange focus:ring-valasys-orange/20 transition-all duration-200 ${focusedField === "lastName" ? "ring-1 ring-valasys-orange/30" : ""}`}
+                        className="pl-10 border-valasys-gray-300 focus:border-valasys-orange focus:ring-valasys-orange/20 transition-all duration-200"
                       />
+                      {errors.last_name && (
+                        <p className="text-red-500 text-xs mt-1">{errors.last_name.message}</p>
+                      )}
                     </div>
                   </div>
                 </div>
+
+                {/* Company and Designation */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label
@@ -231,9 +290,7 @@ export default function CreateAccount() {
                     >
                       <Building2 className="h-3 w-3" />
                       <span>Company Name</span>
-                      <span aria-hidden="true" className="text-red-500 ml-1">
-                        *
-                      </span>
+                      <span className="text-red-500">*</span>
                     </Label>
                     <div className="relative">
                       <Building2
@@ -242,11 +299,14 @@ export default function CreateAccount() {
                       <Input
                         id="company"
                         placeholder="Acme Inc."
-                        required
+                        {...register("company")}
                         onFocus={() => setFocusedField("company")}
                         onBlur={() => setFocusedField(null)}
-                        className={`pl-10 border-valasys-gray-300 focus:border-valasys-orange focus:ring-valasys-orange/20 transition-all duration-200 ${focusedField === "company" ? "ring-1 ring-valasys-orange/30" : ""}`}
+                        className="pl-10 border-valasys-gray-300 focus:border-valasys-orange focus:ring-valasys-orange/20 transition-all duration-200"
                       />
+                      {errors.company && (
+                        <p className="text-red-500 text-xs mt-1">{errors.company.message}</p>
+                      )}
                     </div>
                   </div>
                   <div className="space-y-2">
@@ -256,9 +316,7 @@ export default function CreateAccount() {
                     >
                       <Briefcase className="h-3 w-3" />
                       <span>Designation</span>
-                      <span aria-hidden="true" className="text-red-500 ml-1">
-                        *
-                      </span>
+                      <span className="text-red-500">*</span>
                     </Label>
                     <div className="relative">
                       <Briefcase
@@ -267,36 +325,58 @@ export default function CreateAccount() {
                       <Input
                         id="designation"
                         placeholder="Marketing Manager"
-                        required
+                        {...register("designation")}
                         onFocus={() => setFocusedField("designation")}
                         onBlur={() => setFocusedField(null)}
-                        className={`pl-10 border-valasys-gray-300 focus:border-valasys-orange focus:ring-valasys-orange/20 transition-all duration-200 ${focusedField === "designation" ? "ring-1 ring-valasys-orange/30" : ""}`}
+                        className="pl-10 border-valasys-gray-300 focus:border-valasys-orange focus:ring-valasys-orange/20 transition-all duration-200"
                       />
+                      {errors.designation && (
+                        <p className="text-red-500 text-xs mt-1">{errors.designation.message}</p>
+                      )}
                     </div>
                   </div>
                 </div>
+
+                {/* Phone Number */}
                 <div className="space-y-2">
-                  <Label
-                    htmlFor="phone"
-                    className="text-valasys-gray-700 flex items-center space-x-1"
-                  >
+                  <Label className="text-valasys-gray-700 flex items-center space-x-1">
                     <PhoneIcon className="h-3 w-3" />
-                    <span>Phone number</span>
+                    <span>Phone Number</span>
                   </Label>
                   <div className="relative">
-                    <PhoneIcon
-                      className={`absolute left-3 top-3 h-4 w-4 transition-colors duration-200 ${focusedField === "phone" ? "text-valasys-orange" : "text-valasys-gray-400"}`}
+                    <PhoneInput
+                      country={"us"}
+                      value={watch("phone_number")}
+                      onChange={(value) => setValue("phone_number", value)}
+                      inputProps={{
+                        name: "phone_number",
+                        autoFocus: false,
+                      }}
+                      inputClass="form-control"
+                      inputStyle={{
+                        width: "100%",
+                        padding: "12px 12px 12px 48px",
+                        fontSize: "14px",
+                        border: "1px solid #d1d5db",
+                        borderRadius: "6px",
+                        backgroundColor: "#fff",
+                      }}
+                      containerStyle={{
+                        width: "100%",
+                      }}
+                      buttonStyle={{
+                        border: "1px solid #d1d5db",
+                        backgroundColor: "#fff",
+                        borderRadius: "6px 0 0 6px",
+                      }}
                     />
-                    <Input
-                      id="phone"
-                      type="tel"
-                      placeholder="+1 555 000 0000"
-                      onFocus={() => setFocusedField("phone")}
-                      onBlur={() => setFocusedField(null)}
-                      className={`pl-10 border-valasys-gray-300 focus:border-valasys-orange focus:ring-valasys-orange/20 transition-all duration-200 ${focusedField === "phone" ? "ring-1 ring-valasys-orange/30" : ""}`}
-                    />
+                    {errors.phone_number && (
+                      <p className="text-red-500 text-xs mt-1">{errors.phone_number.message}</p>
+                    )}
                   </div>
                 </div>
+
+                {/* Password Fields */}
                 <div className="space-y-2">
                   <Label
                     htmlFor="password"
@@ -304,9 +384,7 @@ export default function CreateAccount() {
                   >
                     <Lock className="h-3 w-3" />
                     <span>Password</span>
-                    <span aria-hidden="true" className="text-red-500 ml-1">
-                      *
-                    </span>
+                    <span className="text-red-500">*</span>
                   </Label>
                   <div className="relative">
                     <Lock
@@ -316,92 +394,107 @@ export default function CreateAccount() {
                       id="password"
                       type={showPassword ? "text" : "password"}
                       placeholder="••••••••"
-                      required
-                      minLength={6}
+                      {...register("password")}
                       onFocus={() => setFocusedField("password")}
                       onBlur={() => setFocusedField(null)}
-                      className={`pl-10 pr-10 border-valasys-gray-300 focus:border-valasys-orange focus:ring-valasys-orange/20 transition-all duration-200 ${focusedField === "password" ? "ring-1 ring-valasys-orange/30" : ""}`}
+                      className="pl-10 pr-10 border-valasys-gray-300 focus:border-valasys-orange focus:ring-valasys-orange/20 transition-all duration-200"
                     />
                     <button
                       type="button"
-                      aria-label={
-                        showPassword ? "Hide password" : "Show password"
-                      }
-                      onClick={() => setShowPassword((v) => !v)}
+                      onClick={() => setShowPassword(!showPassword)}
                       className="absolute right-3 top-3 text-valasys-gray-400 hover:text-valasys-gray-600"
                     >
-                      {showPassword ? (
-                        <EyeOff className="h-4 w-4" />
-                      ) : (
-                        <Eye className="h-4 w-4" />
-                      )}
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
+                  
+                  {/* Password Strength Indicator */}
+                  {watchedPassword && (
+                    <div className="space-y-2">
+                      <div className="flex space-x-1">
+                        {[1, 2, 3, 4, 5].map((level) => (
+                          <div
+                            key={level}
+                            className={`h-1 flex-1 rounded-full transition-colors duration-200 ${
+                              level <= passwordStrength
+                                ? strengthColors[passwordStrength - 1] || "bg-gray-200"
+                                : "bg-gray-200"
+                            }`}
+                          />
+                        ))}
+                      </div>
+                      <p className="text-xs text-valasys-gray-600">
+                        Password strength: {strengthLabels[passwordStrength - 1] || "Very Weak"}
+                      </p>
+                    </div>
+                  )}
+                  
+                  {errors.password && (
+                    <p className="text-red-500 text-xs mt-1">{errors.password.message}</p>
+                  )}
                 </div>
+
                 <div className="space-y-2">
                   <Label
-                    htmlFor="confirmPassword"
+                    htmlFor="re_password"
                     className="text-valasys-gray-700 flex items-center space-x-1"
                   >
                     <Lock className="h-3 w-3" />
                     <span>Confirm Password</span>
-                    <span aria-hidden="true" className="text-red-500 ml-1">
-                      *
-                    </span>
+                    <span className="text-red-500">*</span>
                   </Label>
                   <div className="relative">
                     <Lock
-                      className={`absolute left-3 top-3 h-4 w-4 transition-colors duration-200 ${focusedField === "confirmPassword" ? "text-valasys-orange" : "text-valasys-gray-400"}`}
+                      className={`absolute left-3 top-3 h-4 w-4 transition-colors duration-200 ${focusedField === "re_password" ? "text-valasys-orange" : "text-valasys-gray-400"}`}
                     />
                     <Input
-                      id="confirmPassword"
+                      id="re_password"
                       type={showConfirmPassword ? "text" : "password"}
                       placeholder="••••••••"
-                      required
-                      minLength={6}
-                      onFocus={() => setFocusedField("confirmPassword")}
+                      {...register("re_password")}
+                      onFocus={() => setFocusedField("re_password")}
                       onBlur={() => setFocusedField(null)}
-                      className={`pl-10 pr-10 border-valasys-gray-300 focus:border-valasys-orange focus:ring-valasys-orange/20 transition-all duration-200 ${focusedField === "confirmPassword" ? "ring-1 ring-valasys-orange/30" : ""}`}
+                      className="pl-10 pr-10 border-valasys-gray-300 focus:border-valasys-orange focus:ring-valasys-orange/20 transition-all duration-200"
                     />
                     <button
                       type="button"
-                      aria-label={
-                        showConfirmPassword
-                          ? "Hide confirm password"
-                          : "Show confirm password"
-                      }
-                      onClick={() => setShowConfirmPassword((v) => !v)}
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                       className="absolute right-3 top-3 text-valasys-gray-400 hover:text-valasys-gray-600"
                     >
-                      {showConfirmPassword ? (
-                        <EyeOff className="h-4 w-4" />
-                      ) : (
-                        <Eye className="h-4 w-4" />
-                      )}
+                      {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
+                  {errors.re_password && (
+                    <p className="text-red-500 text-xs mt-1">{errors.re_password.message}</p>
+                  )}
                 </div>
+
+                {/* Terms and Conditions */}
                 <div className="flex items-start space-x-3">
-                  <input
+                  <Checkbox
                     id="terms"
-                    type="checkbox"
-                    required
-                    className="mt-1 h-4 w-4 rounded border-valasys-gray-300 text-valasys-orange focus:ring-valasys-orange/20"
+                    checked={isCheckboxChecked}
+                    onCheckedChange={setIsCheckboxChecked}
+                    className="mt-1 border-valasys-gray-300 text-valasys-orange focus:ring-valasys-orange/20"
                   />
                   <label
                     htmlFor="terms"
-                    className="text-sm text-valasys-gray-700"
+                    className="text-sm text-valasys-gray-700 cursor-pointer"
                   >
                     By signing up, you agree to our{" "}
                     <a
-                      href="#"
+                      href="https://valasys.com/terms-and-conditions/"
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="text-valasys-orange hover:text-valasys-orange-light underline"
                     >
                       Terms & Conditions
                     </a>{" "}
                     and{" "}
                     <a
-                      href="#"
+                      href="https://valasys.com/privacy-policy/"
+                      target="_blank"
+                      rel="noopener noreferrer"
                       className="text-valasys-orange hover:text-valasys-orange-light underline"
                     >
                       Privacy Policy
@@ -410,19 +503,20 @@ export default function CreateAccount() {
                   </label>
                 </div>
 
+                {/* Submit Buttons */}
                 <div className="flex items-center justify-between">
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => navigate(-1)}
-                    className="gap-2"
+                    onClick={() => navigate("/free-trial")}
+                    className="gap-2 border-valasys-gray-300 text-valasys-gray-700 hover:bg-valasys-gray-50"
                   >
                     <ArrowLeft className="h-4 w-4" /> Back
                   </Button>
                   <Button
                     type="submit"
-                    disabled={isLoading}
-                    className="bg-valasys-orange hover:bg-valasys-orange-light text-white font-medium py-3 shadow-lg hover:shadow-xl transition-all duration-200"
+                    disabled={isLoading || !(isValid && isDirty && isCheckboxChecked)}
+                    className="bg-valasys-orange hover:bg-valasys-orange-light text-white font-medium py-3 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-102"
                   >
                     {isLoading ? (
                       <div className="flex items-center space-x-2">
@@ -431,13 +525,27 @@ export default function CreateAccount() {
                       </div>
                     ) : (
                       <>
-                        <Brain className="mr-2 h-4 w-4" /> Create Account{" "}
+                        <Brain className="mr-2 h-4 w-4" />
+                        Create Account
                         <ArrowRight className="ml-2 h-4 w-4" />
                       </>
                     )}
                   </Button>
                 </div>
               </form>
+
+              {/* Already have account */}
+              <div className="text-center pt-4 border-t border-valasys-gray-200">
+                <p className="text-sm text-valasys-gray-600">
+                  Already have an account?{" "}
+                  <a
+                    href="/login"
+                    className="text-valasys-orange hover:text-valasys-orange-light font-medium transition-colors duration-200 hover:underline"
+                  >
+                    Back to Login
+                  </a>
+                </p>
+              </div>
             </CardContent>
           </Card>
 
@@ -448,6 +556,7 @@ export default function CreateAccount() {
         </div>
       </div>
 
+      {/* Right Side - Keep same structure as other auth pages */}
       <div
         className={`hidden lg:flex relative bg-gradient-to-br from-valasys-orange/10 via-valasys-blue/10 to-valasys-green/10 backdrop-blur-sm transform transition-all duration-700 ${mounted ? "translate-x-0 opacity-100" : "translate-x-6 opacity-0"}`}
       >
@@ -458,12 +567,11 @@ export default function CreateAccount() {
             style={{ transitionDelay: "150ms" }}
           >
             <h2 className="text-2xl font-bold text-valasys-gray-900">
-              Welcome back to <span className="text-valasys-orange">VAIS</span>
+              Join Thousands Using <span className="text-valasys-orange">VAIS</span>
             </h2>
             <p className="text-valasys-gray-600">
-              Access your AI-powered scoring platform to unlock deeper insights,
-              accelerate decision-making, and drive meaningful business
-              outcomes.
+              Create your account and start leveraging AI-powered insights to 
+              transform your sales process and accelerate business growth.
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="flex items-start space-x-3">
@@ -485,10 +593,10 @@ export default function CreateAccount() {
                 </div>
                 <div>
                   <div className="font-semibold text-valasys-gray-900">
-                    Scoring System
+                    Intelligent Scoring
                   </div>
                   <p className="text-xs text-valasys-gray-600">
-                    AI-driven lead and account ranking.
+                    AI-driven lead and account ranking for better targeting
                   </p>
                 </div>
               </div>
@@ -498,10 +606,10 @@ export default function CreateAccount() {
                 </div>
                 <div>
                   <div className="font-semibold text-valasys-gray-900">
-                    Campaign Management
+                    Campaign Optimization
                   </div>
                   <p className="text-xs text-valasys-gray-600">
-                    Campaign tracking with reports and insights.
+                    Smart campaign tracking with actionable reports
                   </p>
                 </div>
               </div>
@@ -511,10 +619,10 @@ export default function CreateAccount() {
                 </div>
                 <div>
                   <div className="font-semibold text-valasys-gray-900">
-                    Real-time Analytics
+                    Real-time Dashboards
                   </div>
                   <p className="text-xs text-valasys-gray-600">
-                    Live data processing and instant reporting
+                    Live data processing and instant performance reporting
                   </p>
                 </div>
               </div>
@@ -555,83 +663,17 @@ export default function CreateAccount() {
             className={`transform transition-all duration-700 ease-out ${mounted ? "translate-y-0 opacity-100" : "translate-y-6 opacity-0"}`}
             style={{ transitionDelay: "300ms" }}
           >
-            <div className="md:block">
-              <div className="space-y-4 hidden">
-                <div className="text-center space-y-2">
-                  <h3 className="text-xl font-semibold text-valasys-gray-900 flex items-center justify-center space-x-2">
-                    <Globe
-                      className="h-5 w-5 text-valasys-blue animate-spin"
-                      style={{ animationDuration: "6s" }}
-                    />
-                    <span>Powered by 50+ Integrations</span>
-                  </h3>
-                  <p className="text-valasys-gray-600 text-sm">
-                    Connect seamlessly with your existing tech stack
-                  </p>
-                </div>
-                <AssociationPartners />
+            <div className="space-y-4">
+              <div className="text-center space-y-2">
+                <h3 className="text-xl font-semibold text-valasys-gray-900 flex items-center justify-center space-x-2">
+                  <Sparkles className="h-5 w-5 text-valasys-orange" />
+                  <span>In Association With</span>
+                </h3>
+                <p className="text-valasys-gray-600 text-sm">
+                  Trusted data and reviews partners
+                </p>
               </div>
-              <div className="hidden" aria-hidden="true" />
-              <div className="hidden" aria-hidden="true" />
-              <div className="space-y-4">
-                <div className="text-center space-y-2">
-                  <h3 className="text-xl font-semibold text-valasys-gray-900 flex items-center justify-center space-x-2">
-                    <Sparkles className="h-5 w-5 text-valasys-orange" />
-                    <span>In Association With</span>
-                  </h3>
-                  <p className="text-valasys-gray-600 text-sm">
-                    Trusted data and reviews partners
-                  </p>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-white/80 backdrop-blur-sm rounded-xl p-4 text-center hover:bg-white/90 transition-all duration-300 group cursor-pointer hover:scale-105 transform shadow-lg border border-white/30">
-                    <div className="h-10 w-10 mx-auto mb-3 bg-white rounded-lg p-2 group-hover:scale-110 group-hover:rotate-3 transition-all duration-200 shadow-md">
-                      <img
-                        src="https://logo.clearbit.com/bombora.com"
-                        alt="Bombora"
-                        className="w-full h-full object-contain"
-                        onError={(e) => {
-                          (e.currentTarget as HTMLImageElement).style.display =
-                            "none";
-                          (
-                            e.currentTarget.parentElement as HTMLElement
-                          ).innerHTML =
-                            '<div class="w-full h-full bg-valasys-orange rounded flex items-center justify-center text-white text-xs font-bold">B</div>';
-                        }}
-                      />
-                    </div>
-                    <h4 className="font-semibold text-valasys-gray-900 text-sm group-hover:text-valasys-orange transition-colors duration-200">
-                      Bombora
-                    </h4>
-                    <p className="text-xs text-valasys-gray-600 group-hover:text-valasys-gray-800 transition-colors duration-200">
-                      Intent Data
-                    </p>
-                  </div>
-                  <div className="bg-white/80 backdrop-blur-sm rounded-xl p-4 text-center hover:bg-white/90 transition-all duration-300 group cursor-pointer hover:scale-105 transform shadow-lg border border-white/30">
-                    <div className="h-10 w-10 mx-auto mb-3 bg-white rounded-lg p-2 group-hover:scale-110 group-hover:rotate-3 transition-all duration-200 shadow-md">
-                      <img
-                        src="https://logo.clearbit.com/g2.com"
-                        alt="G2 Reviews"
-                        className="w-full h-full object-contain"
-                        onError={(e) => {
-                          (e.currentTarget as HTMLImageElement).style.display =
-                            "none";
-                          (
-                            e.currentTarget.parentElement as HTMLElement
-                          ).innerHTML =
-                            '<div class="w-full h-full bg-valasys-blue rounded flex items-center justify-center text-white text-xs font-bold">G2</div>';
-                        }}
-                      />
-                    </div>
-                    <h4 className="font-semibold text-valasys-gray-900 text-sm group-hover:text-valasys-orange transition-colors duration-200">
-                      G2 Reviews
-                    </h4>
-                    <p className="text-xs text-valasys-gray-600 group-hover:text-valasys-gray-800 transition-colors duration-200">
-                      Buyer Insights
-                    </p>
-                  </div>
-                </div>
-              </div>
+              <AssociationPartners />
             </div>
           </div>
 
@@ -639,7 +681,7 @@ export default function CreateAccount() {
             className={`flex items-center justify-center space-x-6 pt-6 border-t border-white/20 transform transition-all duration-700 ${mounted ? "translate-y-0 opacity-100" : "translate-y-10 opacity-0"}`}
             style={{ transitionDelay: "1000ms" }}
           >
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 hover:scale-105 transition-transform duration-300 cursor-pointer">
               <div className="p-2 bg-white/20 rounded-full backdrop-blur-sm">
                 <CheckCircle className="h-4 w-4 text-valasys-green" />
               </div>
@@ -647,7 +689,7 @@ export default function CreateAccount() {
                 SOC 2 Compliant
               </span>
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 hover:scale-105 transition-transform duration-300 cursor-pointer">
               <div className="p-2 bg-white/20 rounded-full backdrop-blur-sm">
                 <Shield className="h-4 w-4 text-valasys-blue" />
               </div>

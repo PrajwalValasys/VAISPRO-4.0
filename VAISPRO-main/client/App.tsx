@@ -1,5 +1,5 @@
 import "./global.css";
-import React from "react";
+import React, { useEffect } from "react";
 
 import { Toaster } from "@/components/ui/toaster";
 import { createRoot } from "react-dom/client";
@@ -7,8 +7,12 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "next-themes";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Provider } from "react-redux";
+import { PersistGate } from "redux-persist/integration/react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { TourProvider } from "./contexts/TourContext";
+import { store, persistor } from "./store";
+import { initializeAuth } from "./store/reducers/authSlice";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
@@ -31,63 +35,89 @@ import FreeTrial from "./pages/FreeTrial";
 import CreateAccount from "./pages/CreateAccount";
 import EmailVerification from "./pages/EmailVerification";
 import ForgotPassword from "./pages/ForgotPassword";
+import ForgotPasswordEmailVerification from "./pages/ForgotPasswordEmailVerification";
+import ResetPassword from "./pages/ResetPassword";
 import AllNotifications from "./pages/AllNotifications";
 import SpendingHistory from "./pages/SpendingHistory";
 
 const queryClient = new QueryClient();
 
+// App initialization component to handle Redux initialization
+const AppInitializer = () => {
+  useEffect(() => {
+    store.dispatch(initializeAuth());
+  }, []);
+
+  return null;
+};
+
 const App = () => (
-  <ThemeProvider
-    attribute="class"
-    defaultTheme="light"
-    enableSystem={false}
-    forcedTheme="light"
-  >
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <TourProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <Routes>
-              <Route path="/" element={<Index />} />
-              <Route path="/login" element={<Login />} />
-              <Route path="/forgot-password" element={<ForgotPassword />} />
-              <Route path="/free-trial" element={<FreeTrial />} />
-              <Route path="/create-account" element={<CreateAccount />} />
-              <Route
-                path="/email-verification"
-                element={<EmailVerification />}
-              />
-              <Route path="/build-vais" element={<BuildVAIS />} />
-              <Route path="/vais-results" element={<VAISResults />} />
-              <Route path="/abm-lal" element={<ABMLAL />} />
-              <Route path="/find-prospect" element={<FindProspect />} />
-              <Route path="/prospect-results" element={<ProspectResults />} />
-              <Route path="/build-campaign" element={<BuildCampaign />} />
-              <Route path="/build-my-campaign" element={<BuildMyCampaign />} />
-              <Route
-                path="/campaign-overview/:id"
-                element={<CampaignOverview />}
-              />
-              <Route path="/my-downloads" element={<MyDownloadedList />} />
-              <Route path="/analytics" element={<Analytics />} />
-              <Route path="/users" element={<Users />} />
-              <Route path="/manage-users" element={<Users />} />
-              <Route path="/support" element={<Support />} />
-              <Route path="/chat-support/:ticketId" element={<ChatSupport />} />
-              <Route path="/faqs" element={<FAQs />} />
-              <Route path="/settings" element={<Settings />} />
-              <Route path="/notifications" element={<AllNotifications />} />
-              <Route path="/spending-history" element={<SpendingHistory />} />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </BrowserRouter>
-        </TourProvider>
-      </TooltipProvider>
-    </QueryClientProvider>
-  </ThemeProvider>
+  <Provider store={store}>
+    <PersistGate loading={null} persistor={persistor}>
+      <ThemeProvider
+        attribute="class"
+        defaultTheme="light"
+        enableSystem={false}
+        forcedTheme="light"
+      >
+        <QueryClientProvider client={queryClient}>
+          <TooltipProvider>
+            <TourProvider>
+              <AppInitializer />
+              <Toaster />
+              <Sonner />
+              <BrowserRouter>
+                <Routes>
+                  <Route path="/" element={<Index />} />
+                  
+                  {/* Authentication Routes */}
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/forgot-password" element={<ForgotPassword />} />
+                  <Route 
+                    path="/forgot-password-email-verification" 
+                    element={<ForgotPasswordEmailVerification />} 
+                  />
+                  <Route path="/reset-password" element={<ResetPassword />} />
+                  <Route path="/free-trial" element={<FreeTrial />} />
+                  <Route path="/create-account" element={<CreateAccount />} />
+                  <Route
+                    path="/email-verification"
+                    element={<EmailVerification />}
+                  />
+                  
+                  {/* Protected Application Routes */}
+                  <Route path="/build-vais" element={<BuildVAIS />} />
+                  <Route path="/vais-results" element={<VAISResults />} />
+                  <Route path="/abm-lal" element={<ABMLAL />} />
+                  <Route path="/find-prospect" element={<FindProspect />} />
+                  <Route path="/prospect-results" element={<ProspectResults />} />
+                  <Route path="/build-campaign" element={<BuildCampaign />} />
+                  <Route path="/build-my-campaign" element={<BuildMyCampaign />} />
+                  <Route
+                    path="/campaign-overview/:id"
+                    element={<CampaignOverview />}
+                  />
+                  <Route path="/my-downloads" element={<MyDownloadedList />} />
+                  <Route path="/analytics" element={<Analytics />} />
+                  <Route path="/users" element={<Users />} />
+                  <Route path="/manage-users" element={<Users />} />
+                  <Route path="/support" element={<Support />} />
+                  <Route path="/chat-support/:ticketId" element={<ChatSupport />} />
+                  <Route path="/faqs" element={<FAQs />} />
+                  <Route path="/settings" element={<Settings />} />
+                  <Route path="/notifications" element={<AllNotifications />} />
+                  <Route path="/spending-history" element={<SpendingHistory />} />
+                  
+                  {/* Catch-all route - MUST be last */}
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </BrowserRouter>
+            </TourProvider>
+          </TooltipProvider>
+        </QueryClientProvider>
+      </ThemeProvider>
+    </PersistGate>
+  </Provider>
 );
 
 // Handle HMR properly to avoid multiple createRoot calls

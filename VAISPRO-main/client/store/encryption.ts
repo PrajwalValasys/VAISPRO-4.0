@@ -1,7 +1,7 @@
 import CryptoJS from 'crypto-js';
 
 // Encryption key - in production, this should come from environment variables
-const ENCRYPTION_KEY = process.env.VITE_ENCRYPTION_KEY || 'vais-default-encryption-key-2024';
+const ENCRYPTION_KEY = import.meta.env.VITE_ENCRYPTION_KEY || 'vais-default-encryption-key-2024';
 
 /**
  * Encrypt data for storage
