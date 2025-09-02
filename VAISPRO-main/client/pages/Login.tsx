@@ -36,7 +36,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
-import ReCAPTCHA from "react-google-recaptcha";
+// import ReCAPTCHA from "react-google-recaptcha";
 import IntegrationsFooter from "@/components/auth/IntegrationsFooter";
 import AssociationPartners from "@/components/auth/AssociationPartners";
 import {
@@ -58,7 +58,7 @@ export default function Login() {
   
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
-  const [captchaValue, setCaptchaValue] = useState<string | null>(null);
+  // const [captchaValue, setCaptchaValue] = useState<string | null>(null);
   const [focusedField, setFocusedField] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [show2FA, setShow2FA] = useState(false);
@@ -85,8 +85,8 @@ export default function Login() {
 
   const watchedFields = watch();
 
-  // reCAPTCHA configuration
-  const SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || "6Ld7dygpAAAAACiHzxJ9F5TTdAJl25uxmqHK0IjZ";
+  // reCAPTCHA configuration (commented out)
+  // const SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || "6Ld7dygpAAAAACiHzxJ9F5TTdAJl25uxmqHK0IjZ";
 
   // LinkedIn auth configuration
   const CLIENT_ID = import.meta.env.VITE_LINKEDIN_CLIENT_ID;
@@ -140,14 +140,15 @@ export default function Login() {
 
   // Handle form submission
   const onSubmit = async (data: LoginCredentials) => {
-    if (!captchaValue) {
-      toast.error("Please complete the reCAPTCHA verification");
-      return;
-    }
+    // reCAPTCHA validation commented out
+    // if (!captchaValue) {
+    //   toast.error("Please complete the reCAPTCHA verification");
+    //   return;
+    // }
 
     const credentials = {
       ...data,
-      captcha: captchaValue,
+      // captcha: captchaValue,
     };
 
     try {
@@ -204,10 +205,11 @@ export default function Login() {
     console.log("Resending OTP");
   };
 
-  const handleCaptchaChange = (value: string | null) => {
-    setCaptchaValue(value);
-    setValue("captcha", value || "");
-  };
+  // reCAPTCHA handler commented out
+  // const handleCaptchaChange = (value: string | null) => {
+  //   setCaptchaValue(value);
+  //   setValue("captcha", value || "");
+  // };
 
   const handleSocialLogin = (provider: string) => {
     if (provider === "linkedin") {
@@ -587,8 +589,8 @@ export default function Login() {
                   </Link>
                 </div>
 
-                {/* Google reCAPTCHA */}
-                <div className="flex justify-center">
+                {/* Google reCAPTCHA - commented out */}
+                {/* <div className="flex justify-center">
                   <ReCAPTCHA
                     sitekey={SITE_KEY}
                     onChange={handleCaptchaChange}
@@ -596,12 +598,12 @@ export default function Login() {
                   {errors.captcha && (
                     <p className="text-red-500 text-xs mt-1">{errors.captcha.message}</p>
                   )}
-                </div>
+                </div> */}
 
                 {/* Sign In Button */}
                 <Button
                   type="submit"
-                  disabled={isLoading || !captchaValue}
+                  disabled={isLoading} // removed captchaValue requirement
                   className="w-full bg-valasys-orange hover:bg-valasys-orange-light text-white font-medium py-3 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-102"
                 >
                   {isLoading ? (
