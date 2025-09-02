@@ -74,7 +74,7 @@ export default function Login() {
     formState: { errors },
     setValue,
     watch,
-  } = useForm<LoginCredentials>({
+  } = useForm({
     resolver: zodResolver(loginSchema),
     defaultValues: {
       username: "",
