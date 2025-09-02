@@ -3,7 +3,7 @@ import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
 
 // Environment configuration
 const getEnvVar = (key: string, fallback: string = ''): string => {
-  return (process.env as any)[key] || fallback;
+  return (import.meta.env as any)[key] || fallback;
 };
 
 // Environment mapping
