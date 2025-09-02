@@ -370,7 +370,7 @@ export default function ForgotPasswordEmailVerification() {
                   </Link>
                   <Button
                     type="submit"
-                    disabled={isLoading || otp.length < 4 || validationError || !isTimerRunning}
+                    disabled={isLoading || otp.length < 4 || !!validationError || !isTimerRunning}
                     className="bg-valasys-orange hover:bg-valasys-orange-light text-white font-medium py-3 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-102"
                   >
                     {isLoading ? (
