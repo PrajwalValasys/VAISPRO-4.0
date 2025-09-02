@@ -141,7 +141,7 @@ export function LiveChat({
     setTimeout(() => {
       setMessages((prev) =>
         prev.map((msg) =>
-          msg.id === userMessage.id ? { ...msg, status: "delivered" } : msg,
+          msg.id === userMessage.id ? { ...msg, status: "delivered" as const } : msg,
         ),
       );
     }, 500);
