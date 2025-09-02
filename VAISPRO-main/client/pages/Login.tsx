@@ -31,16 +31,34 @@ import {
   TrendingUp,
   Megaphone,
 } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { toast } from "sonner";
+import ReCAPTCHA from "react-google-recaptcha";
 import IntegrationsFooter from "@/components/auth/IntegrationsFooter";
 import AssociationPartners from "@/components/auth/AssociationPartners";
+import {
+  loginUser,
+  linkedinAuth,
+  selectAuth,
+  selectIsLoading,
+  clearError,
+  initializeAuth,
+} from "@/store/reducers/authSlice";
+import { loginSchema, type LoginCredentials } from "@/api/services/authService";
+import { AppDispatch, RootState } from "@/store";
 
 export default function Login() {
+  const dispatch = useDispatch<AppDispatch>();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { isLoggedIn, user, isLoading, error } = useSelector(selectAuth);
+  
   const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [captchaValue, setCaptchaValue] = useState<string | null>(null);
   const [focusedField, setFocusedField] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [show2FA, setShow2FA] = useState(false);
@@ -48,11 +66,65 @@ export default function Login() {
   const [isVerifying, setIsVerifying] = useState(false);
   const [canResendOTP, setCanResendOTP] = useState(false);
   const [resendCountdown, setResendCountdown] = useState(30);
-  const navigate = useNavigate();
+
+  // React Hook Form setup
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+    setValue,
+    watch,
+  } = useForm<LoginCredentials>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      username: "",
+      password: "",
+      captcha: "",
+    },
+  });
+
+  const watchedFields = watch();
+
+  // reCAPTCHA configuration
+  const SITE_KEY = process.env.REACT_APP_RECAPTCHA_SITE_KEY || "6Ld7dygpAAAAACiHzxJ9F5TTdAJl25uxmqHK0IjZ";
+  
+  // LinkedIn auth configuration
+  const CLIENT_ID = process.env.REACT_APP_LINKEDIN_CLIENT_ID;
+  const REDIRECT_URI = `${window.location.origin}/login`;
+  const linkedinAuthUrl = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=openid,profile,email`;
 
   useEffect(() => {
     setMounted(true);
-  }, []);
+    dispatch(initializeAuth());
+  }, [dispatch]);
+
+  // Handle LinkedIn OAuth callback
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const code = params.get("code");
+    
+    if (code) {
+      dispatch(linkedinAuth(code)).then((result) => {
+        if (result.type === "auth/linkedinAuth/fulfilled") {
+          navigate("/");
+        }
+      });
+    }
+  }, [location.search, dispatch, navigate]);
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (isLoggedIn && user?.is_active) {
+      navigate("/");
+    }
+  }, [isLoggedIn, user, navigate]);
+
+  // Clear errors on unmount
+  useEffect(() => {
+    return () => {
+      dispatch(clearError());
+    };
+  }, [dispatch]);
 
   // Countdown timer for resend OTP
   useEffect(() => {
@@ -66,13 +138,42 @@ export default function Login() {
     }
   }, [show2FA, resendCountdown]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    console.log("Login attempt:", { email, password, rememberMe });
-    setIsLoading(false);
-    navigate("/");
+  // Handle form submission
+  const onSubmit = async (data: LoginCredentials) => {
+    if (!captchaValue) {
+      toast.error("Please complete the reCAPTCHA verification");
+      return;
+    }
+
+    const credentials = {
+      ...data,
+      captcha: captchaValue,
+    };
+
+    try {
+      const result = await dispatch(loginUser(credentials));
+      
+      if (result.type === "auth/login/fulfilled") {
+        // Save remember me preference
+        if (rememberMe) {
+          localStorage.setItem("remember_login", "true");
+        }
+        
+        // Navigate to dashboard or intended page
+        const from = (location.state as any)?.from?.pathname || "/";
+        navigate(from);
+      } else if (result.type === "auth/login/rejected") {
+        // Handle specific error cases
+        const errorMessage = result.payload as string;
+        if (errorMessage.includes("inactive")) {
+          toast.error("Account is not active. Please complete email and phone verification.");
+        } else if (errorMessage.includes("rate_limited")) {
+          toast.error("Too many failed attempts. Please try again later.");
+        }
+      }
+    } catch (error) {
+      console.error("Login error:", error);
+    }
   };
 
   const handleVerify2FA = async (e: React.FormEvent) => {
@@ -81,7 +182,7 @@ export default function Login() {
 
     setIsVerifying(true);
 
-    // Simulate API call
+    // Simulate API call for demo - replace with actual 2FA verification
     await new Promise((resolve) => setTimeout(resolve, 1500));
 
     console.log("2FA verification:", { otpValue });
@@ -103,12 +204,17 @@ export default function Login() {
     console.log("Resending OTP");
   };
 
-  const handleSocialLogin = (provider: string) => {
-    console.log(`Login with ${provider}`);
+  const handleCaptchaChange = (value: string | null) => {
+    setCaptchaValue(value);
+    setValue("captcha", value || "");
   };
 
-  const handleMagicLink = () => {
-    console.log("Send magic link to:", email);
+  const handleSocialLogin = (provider: string) => {
+    if (provider === "linkedin") {
+      window.location.href = linkedinAuthUrl;
+    } else {
+      console.log(`Login with ${provider}`);
+    }
   };
 
   // AI/ML themed floating elements
@@ -393,7 +499,7 @@ export default function Login() {
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
-              <form onSubmit={handleSubmit} className="space-y-4">
+              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                 {/* Email Field */}
                 <div className="space-y-2">
                   <Label
@@ -411,13 +517,14 @@ export default function Login() {
                       id="email"
                       type="email"
                       placeholder="you@company.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      {...register("username")}
                       onFocus={() => setFocusedField("email")}
                       onBlur={() => setFocusedField(null)}
                       className="pl-10 border-valasys-gray-300 focus:border-valasys-orange focus:ring-valasys-orange/20 transition-all duration-200"
-                      required
                     />
+                    {errors.username && (
+                      <p className="text-red-500 text-xs mt-1">{errors.username.message}</p>
+                    )}
                   </div>
                 </div>
 
@@ -438,12 +545,10 @@ export default function Login() {
                       id="password"
                       type={showPassword ? "text" : "password"}
                       placeholder="Enter your password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
+                      {...register("password")}
                       onFocus={() => setFocusedField("password")}
                       onBlur={() => setFocusedField(null)}
                       className="pl-10 pr-10 border-valasys-gray-300 focus:border-valasys-orange focus:ring-valasys-orange/20 transition-all duration-200"
-                      required
                     />
                     <button
                       type="button"
@@ -452,6 +557,9 @@ export default function Login() {
                     >
                       {showPassword ? <EyeOff /> : <Eye />}
                     </button>
+                    {errors.password && (
+                      <p className="text-red-500 text-xs mt-1">{errors.password.message}</p>
+                    )}
                   </div>
                 </div>
 
@@ -479,21 +587,21 @@ export default function Login() {
                   </Link>
                 </div>
 
-                {/* Google reCAPTCHA Placeholder */}
-                <div className="bg-valasys-gray-50 border border-valasys-gray-200 rounded-lg p-4 text-center">
-                  <div className="flex items-center justify-center space-x-2 text-valasys-gray-600">
-                    <Shield className="h-4 w-4" />
-                    <span className="text-sm">reCAPTCHA verification</span>
-                  </div>
-                  <p className="text-xs text-valasys-gray-500 mt-1">
-                    Protected by Google reCAPTCHA
-                  </p>
+                {/* Google reCAPTCHA */}
+                <div className="flex justify-center">
+                  <ReCAPTCHA
+                    sitekey={SITE_KEY}
+                    onChange={handleCaptchaChange}
+                  />
+                  {errors.captcha && (
+                    <p className="text-red-500 text-xs mt-1">{errors.captcha.message}</p>
+                  )}
                 </div>
 
                 {/* Sign In Button */}
                 <Button
                   type="submit"
-                  disabled={isLoading}
+                  disabled={isLoading || !captchaValue}
                   className="w-full bg-valasys-orange hover:bg-valasys-orange-light text-white font-medium py-3 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-102"
                 >
                   {isLoading ? (
@@ -651,53 +759,6 @@ export default function Login() {
             style={{ transitionDelay: "300ms" }}
           >
             <div className="md:block">
-              {/* Left: Integrations (removed) */}
-              <div className="space-y-4 hidden">
-                <div className="text-center space-y-2">
-                  <h3 className="text-xl font-semibold text-valasys-gray-900 flex items-center justify-center space-x-2">
-                    <Globe
-                      className="h-5 w-5 text-valasys-blue animate-spin"
-                      style={{ animationDuration: "6s" }}
-                    />
-                    <span>Powered by 50+ Integrations</span>
-                  </h3>
-                  <p className="text-valasys-gray-600 text-sm">
-                    Connect seamlessly with your existing tech stack
-                  </p>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  {integrations.map((integration, index) => (
-                    <div
-                      key={index}
-                      className={`bg-white/80 backdrop-blur-sm rounded-xl p-4 text-center hover:bg-white/90 transition-all duration-300 group cursor-pointer hover:scale-105 transform shadow-lg border border-white/30 ${mounted ? "scale-100 opacity-100" : "scale-95 opacity-0"}`}
-                      style={{ transitionDelay: `${400 + index * 100}ms` }}
-                    >
-                      <div className="h-10 w-10 mx-auto mb-3 bg-white rounded-lg p-2 group-hover:scale-110 group-hover:rotate-3 transition-all duration-200 shadow-md">
-                        <img
-                          src={integration.logo}
-                          alt={integration.name}
-                          className="w-full h-full object-contain"
-                          onError={(e) => {
-                            e.currentTarget.style.display = "none";
-                            e.currentTarget.parentElement!.innerHTML = `<div class=\"w-full h-full ${integration.color} rounded flex items-center justify-center text-white text-xs font-bold\">${integration.name[0]}</div>`;
-                          }}
-                        />
-                      </div>
-                      <h4 className="font-semibold text-valasys-gray-900 text-sm group-hover:text-valasys-orange transition-colors duration-200">
-                        {integration.name}
-                      </h4>
-                      <p className="text-xs text-valasys-gray-600 group-hover:text-valasys-gray-800 transition-colors duration-200">
-                        {integration.description}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Divider */}
-              <div className="hidden" aria-hidden="true" />
-              <div className="hidden" aria-hidden="true" />
-
               {/* Right: In Association With */}
               <div className="space-y-4">
                 <div className="text-center space-y-2">
