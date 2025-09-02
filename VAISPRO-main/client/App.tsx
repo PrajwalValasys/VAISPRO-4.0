@@ -39,6 +39,8 @@ import ForgotPasswordEmailVerification from "./pages/ForgotPasswordEmailVerifica
 import ResetPassword from "./pages/ResetPassword";
 import AllNotifications from "./pages/AllNotifications";
 import SpendingHistory from "./pages/SpendingHistory";
+import RequireAuth from "./routes/RequireAuth";
+import PublicOnly from "./routes/PublicOnly";
 
 const queryClient = new QueryClient();
 
