@@ -86,10 +86,10 @@ export default function Login() {
   const watchedFields = watch();
 
   // reCAPTCHA configuration
-  const SITE_KEY = process.env.REACT_APP_RECAPTCHA_SITE_KEY || "6Ld7dygpAAAAACiHzxJ9F5TTdAJl25uxmqHK0IjZ";
-  
+  const SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || "6Ld7dygpAAAAACiHzxJ9F5TTdAJl25uxmqHK0IjZ";
+
   // LinkedIn auth configuration
-  const CLIENT_ID = process.env.REACT_APP_LINKEDIN_CLIENT_ID;
+  const CLIENT_ID = import.meta.env.VITE_LINKEDIN_CLIENT_ID;
   const REDIRECT_URI = `${window.location.origin}/login`;
   const linkedinAuthUrl = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&scope=openid,profile,email`;
 
