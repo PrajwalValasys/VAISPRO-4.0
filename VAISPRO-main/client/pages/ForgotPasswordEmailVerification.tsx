@@ -164,7 +164,7 @@ export default function ForgotPasswordEmailVerification() {
       
       if (result.type === "auth/verifyPasswordResetOTP/fulfilled") {
         // Store token and uid for password reset
-        dispatch(setTokenAndUid(result.payload));
+        dispatch(setTokenAndUid(result.payload as { token: string; uid: string }));
         clearOtpExpiry();
         toast.success("OTP verified successfully!");
         navigate("/reset-password");
