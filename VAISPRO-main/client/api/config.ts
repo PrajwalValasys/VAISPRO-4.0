@@ -3,28 +3,37 @@ import axios, { AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from 
 
 // Environment configuration
 const getEnvVar = (key: string, fallback: string = ''): string => {
-  return (import.meta.env as any)[key] || fallback;
+  const env: any = import.meta.env as any;
+  // Support both VITE_* and REACT_APP_* style keys
+  if (env[key] != null && env[key] !== '') return env[key] as string;
+  // If the key starts with REACT_APP_, also try VITE_ equivalent
+  if (key.startsWith('REACT_APP_')) {
+    const viteKey = key.replace(/^REACT_APP_/, 'VITE_');
+    if (env[viteKey] != null && env[viteKey] !== '') return env[viteKey] as string;
+  }
+  return fallback;
 };
 
 // Environment mapping
-const BUILD_ENV = parseInt(getEnvVar('REACT_APP_BUILD_ENV', '0'));
+const BUILD_ENV = parseInt(getEnvVar('REACT_APP_BUILD_ENV', getEnvVar('VITE_BUILD_ENV', '0')));
 
 const baseUrls = {
-  0: getEnvVar('REACT_APP_LOCAL_BACKEND_URL', 'https://api.valasys.ai'),
-  1: getEnvVar('REACT_APP_STAGING_BACKEND_URL', 'https://api.valasys.ai'),
-  2: getEnvVar('REACT_APP_PROD_BACKEND_URL', 'https://api.valasys.ai'),
+  0: getEnvVar('REACT_APP_LOCAL_BACKEND_URL', getEnvVar('VITE_LOCAL_BACKEND_URL', 'https://api.valasys.ai')),
+  1: getEnvVar('REACT_APP_STAGING_BACKEND_URL', getEnvVar('VITE_STAGING_BACKEND_URL', 'https://api.valasys.ai')),
+  2: getEnvVar('REACT_APP_PROD_BACKEND_URL', getEnvVar('VITE_PROD_BACKEND_URL', 'https://api.valasys.ai')),
 };
 
-export const API_BASE_URL = baseUrls[BUILD_ENV as keyof typeof baseUrls] || baseUrls[0];
+// Prefer an explicit VITE_API_BASE_URL if provided
+export const API_BASE_URL = getEnvVar('VITE_API_BASE_URL', '') || (baseUrls[BUILD_ENV as keyof typeof baseUrls] || baseUrls[0]);
 
 // API Configuration
 export const API_CONFIG = {
   baseURL: API_BASE_URL,
-  timeout: parseInt(getEnvVar('REACT_APP_API_TIMEOUT', '30000')),
+  timeout: parseInt(getEnvVar('REACT_APP_API_TIMEOUT', getEnvVar('VITE_API_TIMEOUT', '30000'))),
   headers: {
     'Content-Type': 'application/json',
     Accept: 'application/json',
-    'X-API-Version': getEnvVar('REACT_APP_API_VERSION', 'v1'),
+    'X-API-Version': getEnvVar('REACT_APP_API_VERSION', getEnvVar('VITE_API_VERSION', 'v1')),
   },
 };
 
