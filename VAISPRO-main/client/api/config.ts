@@ -10,8 +10,8 @@ const getEnvVar = (key: string, fallback: string = ''): string => {
 const BUILD_ENV = parseInt(getEnvVar('REACT_APP_BUILD_ENV', '0'));
 
 const baseUrls = {
-  0: getEnvVar('REACT_APP_LOCAL_BACKEND_URL', 'http://localhost:8000'),
-  1: getEnvVar('REACT_APP_STAGING_BACKEND_URL', 'https://staging-api.valasys.ai'),
+  0: getEnvVar('REACT_APP_LOCAL_BACKEND_URL', 'https://api.valasys.ai'),
+  1: getEnvVar('REACT_APP_STAGING_BACKEND_URL', 'https://api.valasys.ai'),
   2: getEnvVar('REACT_APP_PROD_BACKEND_URL', 'https://api.valasys.ai'),
 };
 
