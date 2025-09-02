@@ -39,6 +39,8 @@ import ForgotPasswordEmailVerification from "./pages/ForgotPasswordEmailVerifica
 import ResetPassword from "./pages/ResetPassword";
 import AllNotifications from "./pages/AllNotifications";
 import SpendingHistory from "./pages/SpendingHistory";
+import RequireAuth from "./routes/RequireAuth";
+import PublicOnly from "./routes/PublicOnly";
 
 const queryClient = new QueryClient();
 
@@ -68,46 +70,46 @@ const App = () => (
               <Sonner />
               <BrowserRouter>
                 <Routes>
-                  <Route path="/" element={<Index />} />
-                  
-                  {/* Authentication Routes */}
-                  <Route path="/login" element={<Login />} />
-                  <Route path="/forgot-password" element={<ForgotPassword />} />
-                  <Route 
-                    path="/forgot-password-email-verification" 
-                    element={<ForgotPasswordEmailVerification />} 
-                  />
-                  <Route path="/reset-password" element={<ResetPassword />} />
-                  <Route path="/free-trial" element={<FreeTrial />} />
-                  <Route path="/create-account" element={<CreateAccount />} />
-                  <Route
-                    path="/email-verification"
-                    element={<EmailVerification />}
-                  />
-                  
-                  {/* Protected Application Routes */}
-                  <Route path="/build-vais" element={<BuildVAIS />} />
-                  <Route path="/vais-results" element={<VAISResults />} />
-                  <Route path="/abm-lal" element={<ABMLAL />} />
-                  <Route path="/find-prospect" element={<FindProspect />} />
-                  <Route path="/prospect-results" element={<ProspectResults />} />
-                  <Route path="/build-campaign" element={<BuildCampaign />} />
-                  <Route path="/build-my-campaign" element={<BuildMyCampaign />} />
-                  <Route
-                    path="/campaign-overview/:id"
-                    element={<CampaignOverview />}
-                  />
-                  <Route path="/my-downloads" element={<MyDownloadedList />} />
-                  <Route path="/analytics" element={<Analytics />} />
-                  <Route path="/users" element={<Users />} />
-                  <Route path="/manage-users" element={<Users />} />
-                  <Route path="/support" element={<Support />} />
-                  <Route path="/chat-support/:ticketId" element={<ChatSupport />} />
-                  <Route path="/faqs" element={<FAQs />} />
-                  <Route path="/settings" element={<Settings />} />
-                  <Route path="/notifications" element={<AllNotifications />} />
-                  <Route path="/spending-history" element={<SpendingHistory />} />
-                  
+                  {/* Public-only routes */}
+                  <Route element={<PublicOnly />}>
+                    <Route path="/login" element={<Login />} />
+                    <Route path="/forgot-password" element={<ForgotPassword />} />
+                    <Route
+                      path="/forgot-password-email-verification"
+                      element={<ForgotPasswordEmailVerification />}
+                    />
+                    <Route path="/reset-password" element={<ResetPassword />} />
+                    <Route path="/free-trial" element={<FreeTrial />} />
+                    <Route path="/create-account" element={<CreateAccount />} />
+                    <Route
+                      path="/email-verification"
+                      element={<EmailVerification />}
+                    />
+                  </Route>
+
+                  {/* Protected application routes */}
+                  <Route element={<RequireAuth />}>
+                    <Route path="/" element={<Index />} />
+                    <Route path="/build-vais" element={<BuildVAIS />} />
+                    <Route path="/vais-results" element={<VAISResults />} />
+                    <Route path="/abm-lal" element={<ABMLAL />} />
+                    <Route path="/find-prospect" element={<FindProspect />} />
+                    <Route path="/prospect-results" element={<ProspectResults />} />
+                    <Route path="/build-campaign" element={<BuildCampaign />} />
+                    <Route path="/build-my-campaign" element={<BuildMyCampaign />} />
+                    <Route path="/campaign-overview/:id" element={<CampaignOverview />} />
+                    <Route path="/my-downloads" element={<MyDownloadedList />} />
+                    <Route path="/analytics" element={<Analytics />} />
+                    <Route path="/users" element={<Users />} />
+                    <Route path="/manage-users" element={<Users />} />
+                    <Route path="/support" element={<Support />} />
+                    <Route path="/chat-support/:ticketId" element={<ChatSupport />} />
+                    <Route path="/faqs" element={<FAQs />} />
+                    <Route path="/settings" element={<Settings />} />
+                    <Route path="/notifications" element={<AllNotifications />} />
+                    <Route path="/spending-history" element={<SpendingHistory />} />
+                  </Route>
+
                   {/* Catch-all route - MUST be last */}
                   <Route path="*" element={<NotFound />} />
                 </Routes>

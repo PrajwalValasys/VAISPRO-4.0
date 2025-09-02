@@ -52,7 +52,7 @@ export default function FreeTrial() {
     handleSubmit,
     formState: { errors },
     getValues,
-  } = useForm<FreeTrialForm>({
+  } = useForm({
     resolver: zodResolver(emailVerificationSchema),
     defaultValues: {
       email: "",

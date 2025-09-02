@@ -461,7 +461,7 @@ export function NextGenChatbot({
             prev
               .map((msg) =>
                 msg.sender === "user" && msg.status === "sending"
-                  ? { ...msg, status: "read" }
+                  ? { ...msg, status: "read" as const }
                   : msg,
               )
               .concat(agentMessage),
@@ -517,7 +517,7 @@ export function NextGenChatbot({
       setTimeout(() => {
         setMessages((prev) =>
           prev.map((msg) =>
-            msg.id === userMessage.id ? { ...msg, status: "delivered" } : msg,
+            msg.id === userMessage.id ? { ...msg, status: "delivered" as const } : msg,
           ),
         );
       }, 500);

@@ -1,31 +1,40 @@
 // API Configuration for VAIS Application
-import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
+import axios, { AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 
 // Environment configuration
 const getEnvVar = (key: string, fallback: string = ''): string => {
-  return (import.meta.env as any)[key] || fallback;
+  const env: any = import.meta.env as any;
+  // Support both VITE_* and REACT_APP_* style keys
+  if (env[key] != null && env[key] !== '') return env[key] as string;
+  // If the key starts with REACT_APP_, also try VITE_ equivalent
+  if (key.startsWith('REACT_APP_')) {
+    const viteKey = key.replace(/^REACT_APP_/, 'VITE_');
+    if (env[viteKey] != null && env[viteKey] !== '') return env[viteKey] as string;
+  }
+  return fallback;
 };
 
 // Environment mapping
-const BUILD_ENV = parseInt(getEnvVar('REACT_APP_BUILD_ENV', '0'));
+const BUILD_ENV = parseInt(getEnvVar('REACT_APP_BUILD_ENV', getEnvVar('VITE_BUILD_ENV', '0')));
 
 const baseUrls = {
-  0: getEnvVar('REACT_APP_LOCAL_BACKEND_URL', 'https://api.valasys.ai'),
-  1: getEnvVar('REACT_APP_STAGING_BACKEND_URL', 'https://api.valasys.ai'),
-  2: getEnvVar('REACT_APP_PROD_BACKEND_URL', 'https://api.valasys.ai'),
+  0: getEnvVar('REACT_APP_LOCAL_BACKEND_URL', getEnvVar('VITE_LOCAL_BACKEND_URL', 'https://api.valasys.ai')),
+  1: getEnvVar('REACT_APP_STAGING_BACKEND_URL', getEnvVar('VITE_STAGING_BACKEND_URL', 'https://api.valasys.ai')),
+  2: getEnvVar('REACT_APP_PROD_BACKEND_URL', getEnvVar('VITE_PROD_BACKEND_URL', 'https://api.valasys.ai')),
 };
 
-export const API_BASE_URL = baseUrls[BUILD_ENV as keyof typeof baseUrls] || baseUrls[0];
+// Prefer an explicit VITE_API_BASE_URL if provided
+export const API_BASE_URL = getEnvVar('VITE_API_BASE_URL', '') || (baseUrls[BUILD_ENV as keyof typeof baseUrls] || baseUrls[0]);
 
 // API Configuration
 export const API_CONFIG = {
   baseURL: API_BASE_URL,
-  timeout: parseInt(getEnvVar('REACT_APP_API_TIMEOUT', '30000')),
+  timeout: parseInt(getEnvVar('REACT_APP_API_TIMEOUT', getEnvVar('VITE_API_TIMEOUT', '30000'))),
   headers: {
     'Content-Type': 'application/json',
-    'Accept': 'application/json',
-    'X-API-Version': getEnvVar('REACT_APP_API_VERSION', 'v1'),
-  }
+    Accept: 'application/json',
+    'X-API-Version': getEnvVar('REACT_APP_API_VERSION', getEnvVar('VITE_API_VERSION', 'v1')),
+  },
 };
 
 // Create axios instance
@@ -33,59 +42,60 @@ export const apiClient: AxiosInstance = axios.create(API_CONFIG);
 
 // Request interceptor to add auth token
 apiClient.interceptors.request.use(
-  (config: AxiosRequestConfig) => {
+  (config: InternalAxiosRequestConfig) => {
     const token = localStorage.getItem('valasys_auth_token');
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
+    if (token) {
+      (config.headers as any) = config.headers || ({} as any);
+      (config.headers as any).Authorization = `Bearer ${token}`;
     }
     return config;
   },
   (error) => {
     return Promise.reject(error);
-  }
+  },
 );
 
 // Response interceptor to handle common errors
+type RetryableRequest = InternalAxiosRequestConfig & { _retry?: boolean };
+
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => {
     return response;
   },
   async (error) => {
-    const originalRequest = error.config;
+    const originalRequest = error.config as RetryableRequest;
 
     // Handle 401 errors (token expired)
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
       originalRequest._retry = true;
-      
+
       // Try to refresh token
       const refreshToken = localStorage.getItem('valasys_refresh_token');
       if (refreshToken) {
         try {
           const response = await axios.post(`${API_BASE_URL}/token/refresh/`, {
-            refresh: refreshToken
+            refresh: refreshToken,
           });
-          
+
           const newToken = response.data.access;
           localStorage.setItem('valasys_auth_token', newToken);
-          
-          // Retry the original request with new token
-          originalRequest.headers.Authorization = `Bearer ${newToken}`;
+
+          originalRequest.headers = (originalRequest.headers || ({} as any)) as any;
+          (originalRequest.headers as any).Authorization = `Bearer ${newToken}`;
           return axios(originalRequest);
         } catch (refreshError) {
-          // Refresh failed, redirect to login
           localStorage.removeItem('valasys_auth_token');
           localStorage.removeItem('valasys_refresh_token');
           window.location.href = '/login';
         }
       } else {
-        // No refresh token, redirect to login
         localStorage.removeItem('valasys_auth_token');
         window.location.href = '/login';
       }
     }
 
     return Promise.reject(error);
-  }
+  },
 );
 
 // API response types
@@ -98,7 +108,6 @@ export interface ApiResponse<T = any> {
 
 // API endpoints
 export const API_ENDPOINTS = {
-  // Authentication endpoints
   AUTH: {
     LOGIN: '/login/',
     REGISTER: '/register',
@@ -113,15 +122,13 @@ export const API_ENDPOINTS = {
     CHANGE_PASSWORD: '/change_password',
     RESEND_OTP_EMAIL: '/resend-otp-email/',
     RESEND_OTP_PHONE: '/resend-otp-phone/',
-    LINKEDIN_LOGIN: '/user-accounts/linkedin/'
+    LINKEDIN_LOGIN: '/user-accounts/linkedin/',
   },
-  
-  // User management endpoints
   USER: {
     DETAILS: '/get_profile',
     UPDATE: '/update_profile/',
     STATUS: '/get_user_status',
-  }
+  },
 };
 
 // Utility functions
