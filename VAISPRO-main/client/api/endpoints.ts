@@ -1,4 +1,6 @@
-import { BASE_URL } from './config';
+import { API_BASE_URL } from './config';
+
+const BASE_URL = API_BASE_URL;
 
 // Auth endpoints
 export const AUTH_ENDPOINTS = {
