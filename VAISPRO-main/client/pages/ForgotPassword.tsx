@@ -15,18 +15,73 @@ import {
   Globe,
   CheckCircle,
 } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { toast } from "sonner";
 import AssociationPartners from "@/components/auth/AssociationPartners";
 import IntegrationsFooter from "@/components/auth/IntegrationsFooter";
+import {
+  sendPasswordResetOTP,
+  selectAuth,
+  selectIsLoading,
+  clearError,
+} from "@/store/reducers/authSlice";
+import { passwordResetSchema } from "@/api/services/authService";
+import { AppDispatch } from "@/store";
 
-import { Link } from "react-router-dom";
+interface ForgotPasswordForm {
+  email: string;
+}
 
 export default function ForgotPassword() {
+  const dispatch = useDispatch<AppDispatch>();
+  const navigate = useNavigate();
+  const { isLoading, error } = useSelector(selectAuth);
+  
   const [mounted, setMounted] = useState(false);
-  const [email, setEmail] = useState("");
   const [focusedField, setFocusedField] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => setMounted(true), []);
+  // React Hook Form setup
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<ForgotPasswordForm>({
+    resolver: zodResolver(passwordResetSchema),
+    defaultValues: {
+      email: "",
+    },
+  });
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Clear errors on unmount
+  useEffect(() => {
+    return () => {
+      dispatch(clearError());
+    };
+  }, [dispatch]);
+
+  const onSubmit = async (data: ForgotPasswordForm) => {
+    try {
+      const result = await dispatch(sendPasswordResetOTP(data.email));
+      
+      if (result.type === "auth/sendPasswordResetOTP/fulfilled") {
+        // Set OTP timer for 3 minutes (180 seconds) in localStorage
+        const timerEndTime = new Date().getTime() + 180 * 1000;
+        localStorage.setItem("otpTimerEndTime", timerEndTime.toString());
+        
+        // Navigate to verification page
+        navigate("/forgot-password-email-verification");
+      }
+    } catch (error) {
+      console.error("Forgot password error:", error);
+    }
+  };
 
   const aiElements = [
     {
@@ -72,14 +127,6 @@ export default function ForgotPassword() {
       color: "bg-valasys-green/40",
     },
   ];
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    await new Promise((r) => setTimeout(r, 800));
-    console.log("Forgot password request:", { email });
-    setIsSubmitting(false);
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-valasys-gray-50 via-white to-valasys-orange/5 lg:grid lg:grid-cols-2 relative overflow-hidden">
@@ -156,14 +203,14 @@ export default function ForgotPassword() {
                 className="mx-auto h-12 w-auto object-contain mb-4"
               />
               <CardTitle className="text-lg font-semibold text-valasys-gray-900">
-                Forgot Your Password
+                Forgot Your Password?
               </CardTitle>
               <p className="text-sm text-valasys-gray-600">
                 Please enter the email address associated with your account.
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
-              <form onSubmit={handleSubmit} className="space-y-4">
+              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                 <div className="space-y-2">
                   <Label
                     htmlFor="email"
@@ -171,6 +218,7 @@ export default function ForgotPassword() {
                   >
                     <Mail className="h-3 w-3" />
                     <span>Business Email</span>
+                    <span className="text-red-500">*</span>
                   </Label>
                   <div className="relative">
                     <Mail
@@ -180,13 +228,14 @@ export default function ForgotPassword() {
                       id="email"
                       type="email"
                       placeholder="you@company.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      {...register("email")}
                       onFocus={() => setFocusedField("email")}
                       onBlur={() => setFocusedField(null)}
                       className="pl-10 border-valasys-gray-300 focus:border-valasys-orange focus:ring-valasys-orange/20 transition-all duration-200"
-                      required
                     />
+                    {errors.email && (
+                      <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>
+                    )}
                   </div>
                 </div>
 
@@ -202,10 +251,10 @@ export default function ForgotPassword() {
                   </Link>
                   <Button
                     type="submit"
-                    disabled={isSubmitting}
+                    disabled={isLoading}
                     className="bg-valasys-orange hover:bg-valasys-orange-light text-white font-medium py-3 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-102"
                   >
-                    {isSubmitting ? (
+                    {isLoading ? (
                       <div className="flex items-center space-x-2">
                         <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                         <span>Sending...</span>
@@ -213,12 +262,27 @@ export default function ForgotPassword() {
                     ) : (
                       <>
                         <Shield className="mr-2 h-4 w-4" />
-                        Send Request Code
+                        Send Reset Code
                       </>
                     )}
                   </Button>
                 </div>
               </form>
+
+              {/* Help link */}
+              <div className="text-center pt-2 border-t border-valasys-gray-200">
+                <p className="text-sm text-valasys-gray-600">
+                  Need help?{" "}
+                  <a
+                    href="https://valasys.io/valasysai/troubleshoot#login-issue"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-valasys-orange hover:text-valasys-orange-light font-medium transition-colors duration-200 hover:underline"
+                  >
+                    Contact Support
+                  </a>
+                </p>
+              </div>
             </CardContent>
           </Card>
           <div className="pt-4">
@@ -236,50 +300,49 @@ export default function ForgotPassword() {
             style={{ transitionDelay: "150ms" }}
           >
             <h2 className="text-2xl font-bold text-valasys-gray-900">
-              Welcome back to <span className="text-valasys-orange">VAIS</span>
+              Reset Your <span className="text-valasys-orange">VAIS</span> Password
             </h2>
             <p className="text-valasys-gray-600">
-              Access your AI-powered scoring platform to unlock deeper insights,
-              accelerate decision-making, and drive meaningful business
-              outcomes.
+              Secure password reset to get you back to your AI-powered scoring 
+              platform quickly and safely.
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex items-start space-x-3">
+                <div className="w-8 h-8 rounded-lg border border-valasys-orange text-valasys-orange flex items-center justify-center shadow-sm">
+                  <Shield className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="font-semibold text-valasys-gray-900">
+                    Secure Process
+                  </div>
+                  <p className="text-xs text-valasys-gray-600">
+                    Bank-level security for password reset
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start space-x-3">
+                <div className="w-8 h-8 rounded-lg border border-valasys-orange text-valasys-orange flex items-center justify-center shadow-sm">
+                  <Mail className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="font-semibold text-valasys-gray-900">
+                    Email Verification
+                  </div>
+                  <p className="text-xs text-valasys-gray-600">
+                    One-time verification code sent to your email
+                  </p>
+                </div>
+              </div>
               <div className="flex items-start space-x-3">
                 <div className="w-8 h-8 rounded-lg border border-valasys-orange text-valasys-orange flex items-center justify-center shadow-sm">
                   <Brain className="w-4 h-4" />
                 </div>
                 <div>
                   <div className="font-semibold text-valasys-gray-900">
-                    AI-Powered Insights
+                    Quick Access
                   </div>
                   <p className="text-xs text-valasys-gray-600">
-                    Advanced algorithms that deliver actionable intelligence
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start space-x-3">
-                <div className="w-8 h-8 rounded-lg border border-valasys-orange text-valasys-orange flex items-center justify-center shadow-sm">
-                  <TrendingUp className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="font-semibold text-valasys-gray-900">
-                    Scoring System
-                  </div>
-                  <p className="text-xs text-valasys-gray-600">
-                    AI-driven lead and account ranking.
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start space-x-3">
-                <div className="w-8 h-8 rounded-lg border border-valasys-orange text-valasys-orange flex items-center justify-center shadow-sm">
-                  <Megaphone className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="font-semibold text-valasys-gray-900">
-                    Campaign Management
-                  </div>
-                  <p className="text-xs text-valasys-gray-600">
-                    Campaign tracking with reports and insights.
+                    Get back to your AI insights in minutes
                   </p>
                 </div>
               </div>
@@ -289,10 +352,10 @@ export default function ForgotPassword() {
                 </div>
                 <div>
                   <div className="font-semibold text-valasys-gray-900">
-                    Real-time Analytics
+                    No Data Loss
                   </div>
                   <p className="text-xs text-valasys-gray-600">
-                    Live data processing and instant reporting
+                    All your campaigns and data remain safe
                   </p>
                 </div>
               </div>
@@ -333,8 +396,6 @@ export default function ForgotPassword() {
             style={{ transitionDelay: "300ms" }}
           >
             <div className="md:block">
-              <div className="hidden" />
-              <div className="hidden" />
               <div className="space-y-4">
                 <div className="text-center space-y-2">
                   <h3 className="text-xl font-semibold text-valasys-gray-900 flex items-center justify-center space-x-2">
