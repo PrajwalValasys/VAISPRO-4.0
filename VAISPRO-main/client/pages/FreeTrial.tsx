@@ -18,26 +18,83 @@ import {
   Megaphone,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { toast } from "sonner";
 import IntegrationsFooter from "@/components/auth/IntegrationsFooter";
 import AssociationPartners from "@/components/auth/AssociationPartners";
+import {
+  verifyBusinessEmail,
+  resendEmailOTP,
+  selectAuth,
+  selectIsLoading,
+  clearError,
+} from "@/store/reducers/authSlice";
+import { emailVerificationSchema } from "@/api/services/authService";
+import { AppDispatch } from "@/store";
+
+interface FreeTrialForm {
+  email: string;
+}
 
 export default function FreeTrial() {
-  const [mounted, setMounted] = useState(false);
-  const [email, setEmail] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [focusedField, setFocusedField] = useState<string | null>(null);
+  const dispatch = useDispatch<AppDispatch>();
   const navigate = useNavigate();
+  const { isLoading, error } = useSelector(selectAuth);
+  
+  const [mounted, setMounted] = useState(false);
+  const [focusedField, setFocusedField] = useState<string | null>(null);
+
+  // React Hook Form setup
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+    getValues,
+  } = useForm<FreeTrialForm>({
+    resolver: zodResolver(emailVerificationSchema),
+    defaultValues: {
+      email: "",
+    },
+  });
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsLoading(true);
-    await new Promise((r) => setTimeout(r, 1200));
-    setIsLoading(false);
-    // Success flow could redirect or show toast; keep demo simple
+  // Clear errors on unmount
+  useEffect(() => {
+    return () => {
+      dispatch(clearError());
+    };
+  }, [dispatch]);
+
+  const onSubmit = async (data: FreeTrialForm) => {
+    try {
+      const result = await dispatch(verifyBusinessEmail(data.email));
+      
+      if (result.type === "auth/verifyBusinessEmail/fulfilled") {
+        // Navigate to account creation
+        navigate("/create-account");
+      } else if (result.type === "auth/verifyBusinessEmail/rejected") {
+        const errorMessage = result.payload as string;
+        
+        // Check if it's a special case where user exists but not verified
+        if (result.meta.arg && typeof result.payload === 'object' && (result.payload as any).redirect) {
+          // User exists but not verified, send them to email verification
+          const timerEndTime = new Date().getTime() + 180 * 1000;
+          localStorage.setItem("otpTimerEndTime", timerEndTime.toString());
+          navigate("/email-verification", { state: { email: data.email } });
+        } else {
+          // Show error message
+          toast.error(errorMessage);
+        }
+      }
+    } catch (error) {
+      console.error("Email verification error:", error);
+      toast.error("Something went wrong. Please try again.");
+    }
   };
 
   // Reuse subtle floating dots configuration from Login page
@@ -62,22 +119,6 @@ export default function FreeTrial() {
       delay: "2s",
       size: "w-4 h-4",
       color: "bg-valasys-green/25",
-    },
-  ];
-
-  // Right-side integrations data (limited to Salesforce & HubSpot)
-  const integrations = [
-    {
-      name: "Salesforce",
-      logo: "https://upload.wikimedia.org/wikipedia/commons/f/f9/Salesforce.com_logo.svg",
-      description: "CRM Integration",
-      color: "bg-blue-500",
-    },
-    {
-      name: "HubSpot",
-      logo: "https://www.hubspot.com/hubfs/HubSpot_Logos/HubSpot-Inversed-Favicon.png",
-      description: "Marketing Automation",
-      color: "bg-orange-500",
     },
   ];
 
@@ -156,21 +197,22 @@ export default function FreeTrial() {
                 className="mx-auto h-12 w-auto object-contain mb-4"
               />
               <CardTitle className="text-lg font-semibold text-valasys-gray-900">
-                Start your free trial
+                Start Your Free Trial
               </CardTitle>
               <p className="text-sm text-valasys-gray-600">
-                Enter your email to get started
+                Enter your business email to get started with 5 days of free access
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
-              <form onSubmit={handleSubmit} className="space-y-4">
+              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                 <div className="space-y-2">
                   <Label
                     htmlFor="email"
                     className="text-valasys-gray-700 flex items-center space-x-1"
                   >
                     <Mail className="h-3 w-3" />
-                    <span>Email Address</span>
+                    <span>Business Email Address</span>
+                    <span className="text-red-500">*</span>
                   </Label>
                   <div className="relative">
                     <Mail
@@ -180,50 +222,88 @@ export default function FreeTrial() {
                       id="email"
                       type="email"
                       placeholder="you@company.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      {...register("email")}
                       onFocus={() => setFocusedField("email")}
                       onBlur={() => setFocusedField(null)}
                       className="pl-10 border-valasys-gray-300 focus:border-valasys-orange focus:ring-valasys-orange/20 transition-all duration-200"
-                      required
                     />
+                    {errors.email && (
+                      <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>
+                    )}
                   </div>
+                </div>
+
+                {/* Trial Benefits */}
+                <div className="bg-valasys-gray-50 border border-valasys-gray-200 rounded-lg p-3">
+                  <h4 className="text-sm font-medium text-valasys-gray-700 mb-2">
+                    What's included in your free trial:
+                  </h4>
+                  <ul className="text-xs text-valasys-gray-600 space-y-1">
+                    <li className="flex items-center space-x-2">
+                      <CheckCircle className="w-3 h-3 text-valasys-green" />
+                      <span>5 days of full platform access</span>
+                    </li>
+                    <li className="flex items-center space-x-2">
+                      <CheckCircle className="w-3 h-3 text-valasys-green" />
+                      <span>AI-powered scoring and insights</span>
+                    </li>
+                    <li className="flex items-center space-x-2">
+                      <CheckCircle className="w-3 h-3 text-valasys-green" />
+                      <span>Campaign management tools</span>
+                    </li>
+                    <li className="flex items-center space-x-2">
+                      <CheckCircle className="w-3 h-3 text-valasys-green" />
+                      <span>Real-time analytics dashboard</span>
+                    </li>
+                    <li className="flex items-center space-x-2">
+                      <CheckCircle className="w-3 h-3 text-valasys-green" />
+                      <span>No credit card required</span>
+                    </li>
+                  </ul>
                 </div>
 
                 <div className="flex items-center justify-between">
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => navigate(-1)}
-                    className="gap-2"
+                    onClick={() => navigate("/login")}
+                    className="gap-2 border-valasys-gray-300 text-valasys-gray-700 hover:bg-valasys-gray-50"
                   >
-                    <ArrowLeft className="h-4 w-4" /> Back
+                    <ArrowLeft className="h-4 w-4" /> Back to Login
                   </Button>
                   <Button
-                    type="button"
-                    onClick={() => {
-                      try {
-                        if (email) localStorage.setItem("signupEmail", email);
-                      } catch (e) {}
-                      navigate("/create-account", { state: { email } });
-                    }}
+                    type="submit"
                     disabled={isLoading}
-                    className="bg-valasys-orange hover:bg-valasys-orange-light text-white font-medium py-3 shadow-lg hover:shadow-xl transition-all duration-200"
+                    className="bg-valasys-orange hover:bg-valasys-orange-light text-white font-medium py-3 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-102"
                   >
                     {isLoading ? (
                       <div className="flex items-center space-x-2">
                         <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        <span>Submitting...</span>
+                        <span>Verifying...</span>
                       </div>
                     ) : (
                       <>
-                        <Brain className="mr-2 h-4 w-4" /> Sign In{" "}
+                        <Brain className="mr-2 h-4 w-4" />
+                        Start My Free Trial
                         <ArrowRight className="ml-2 h-4 w-4" />
                       </>
                     )}
                   </Button>
                 </div>
               </form>
+
+              {/* Already have account */}
+              <div className="text-center pt-4 border-t border-valasys-gray-200">
+                <p className="text-sm text-valasys-gray-600">
+                  Already have an account?{" "}
+                  <Link
+                    to="/login"
+                    className="text-valasys-orange hover:text-valasys-orange-light font-medium transition-colors duration-200 hover:underline"
+                  >
+                    Sign In
+                  </Link>
+                </p>
+              </div>
             </CardContent>
           </Card>
 
@@ -246,12 +326,11 @@ export default function FreeTrial() {
             style={{ transitionDelay: "150ms" }}
           >
             <h2 className="text-2xl font-bold text-valasys-gray-900">
-              Welcome back to <span className="text-valasys-orange">VAIS</span>
+              Transform Your Sales with <span className="text-valasys-orange">AI</span>
             </h2>
             <p className="text-valasys-gray-600">
-              Access your AI-powered scoring platform to unlock deeper insights,
-              accelerate decision-making, and drive meaningful business
-              outcomes.
+              Experience the power of AI-driven insights and scoring to accelerate 
+              your sales process and drive meaningful business outcomes.
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="flex items-start space-x-3">
@@ -273,10 +352,10 @@ export default function FreeTrial() {
                 </div>
                 <div>
                   <div className="font-semibold text-valasys-gray-900">
-                    Scoring System
+                    Intelligent Scoring
                   </div>
                   <p className="text-xs text-valasys-gray-600">
-                    AI-driven lead and account ranking.
+                    AI-driven lead and account ranking for better targeting
                   </p>
                 </div>
               </div>
@@ -286,10 +365,10 @@ export default function FreeTrial() {
                 </div>
                 <div>
                   <div className="font-semibold text-valasys-gray-900">
-                    Campaign Management
+                    Campaign Optimization
                   </div>
                   <p className="text-xs text-valasys-gray-600">
-                    Campaign tracking with reports and insights.
+                    Smart campaign tracking with actionable reports
                   </p>
                 </div>
               </div>
@@ -299,10 +378,10 @@ export default function FreeTrial() {
                 </div>
                 <div>
                   <div className="font-semibold text-valasys-gray-900">
-                    Real-time Analytics
+                    Real-time Dashboards
                   </div>
                   <p className="text-xs text-valasys-gray-600">
-                    Live data processing and instant reporting
+                    Live data processing and instant performance reporting
                   </p>
                 </div>
               </div>
@@ -340,72 +419,22 @@ export default function FreeTrial() {
             </div>
           </div>
 
-          {/* Integrations + Association */}
+          {/* Association */}
           <div
             className={`transform transition-all duration-700 ease-out ${mounted ? "translate-y-0 opacity-100" : "translate-y-6 opacity-0"}`}
             style={{ transitionDelay: "300ms" }}
           >
-            <div className="md:block">
-              <div className="space-y-4 hidden">
-                <div className="text-center space-y-2">
-                  <h3 className="text-xl font-semibold text-valasys-gray-900 flex items-center justify-center space-x-2">
-                    <Globe
-                      className="h-5 w-5 text-valasys-blue animate-spin"
-                      style={{ animationDuration: "6s" }}
-                    />
-                    <span>Powered by 50+ Integrations</span>
-                  </h3>
-                  <p className="text-valasys-gray-600 text-sm">
-                    Connect seamlessly with your existing tech stack
-                  </p>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  {integrations.map((integration, index) => (
-                    <div
-                      key={index}
-                      className={`bg-white/80 backdrop-blur-sm rounded-xl p-4 text-center hover:bg-white/90 transition-all duration-300 group cursor-pointer hover:scale-105 transform shadow-lg border border-white/30 ${mounted ? "scale-100 opacity-100" : "scale-95 opacity-0"}`}
-                      style={{ transitionDelay: `${400 + index * 100}ms` }}
-                    >
-                      <div className="h-10 w-10 mx-auto mb-3 bg-white rounded-lg p-2 group-hover:scale-110 group-hover:rotate-3 transition-all duration-200 shadow-md">
-                        <img
-                          src={integration.logo}
-                          alt={integration.name}
-                          className="w-full h-full object-contain"
-                          onError={(e) => {
-                            (
-                              e.currentTarget as HTMLImageElement
-                            ).style.display = "none";
-                            (
-                              e.currentTarget.parentElement as HTMLElement
-                            ).innerHTML =
-                              `<div class='w-full h-full ${integration.color} rounded flex items-center justify-center text-white text-xs font-bold'>${integration.name[0]}</div>`;
-                          }}
-                        />
-                      </div>
-                      <h4 className="font-semibold text-valasys-gray-900 text-sm group-hover:text-valasys-orange transition-colors duration-200">
-                        {integration.name}
-                      </h4>
-                      <p className="text-xs text-valasys-gray-600 group-hover:text-valasys-gray-800 transition-colors duration-200">
-                        {integration.description}
-                      </p>
-                    </div>
-                  ))}
-                </div>
+            <div className="space-y-4">
+              <div className="text-center space-y-2">
+                <h3 className="text-xl font-semibold text-valasys-gray-900 flex items-center justify-center space-x-2">
+                  <Sparkles className="h-5 w-5 text-valasys-orange" />
+                  <span>In Association With</span>
+                </h3>
+                <p className="text-valasys-gray-600 text-sm">
+                  Trusted data and reviews partners
+                </p>
               </div>
-              <div className="hidden" aria-hidden="true" />
-              <div className="hidden" aria-hidden="true" />
-              <div className="space-y-4">
-                <div className="text-center space-y-2">
-                  <h3 className="text-xl font-semibold text-valasys-gray-900 flex items-center justify-center space-x-2">
-                    <Sparkles className="h-5 w-5 text-valasys-orange" />
-                    <span>In Association With</span>
-                  </h3>
-                  <p className="text-valasys-gray-600 text-sm">
-                    Trusted data and reviews partners
-                  </p>
-                </div>
-                <AssociationPartners />
-              </div>
+              <AssociationPartners />
             </div>
           </div>
 
@@ -414,7 +443,7 @@ export default function FreeTrial() {
             className={`flex items-center justify-center space-x-6 pt-6 border-t border-white/20 transform transition-all duration-700 ${mounted ? "translate-y-0 opacity-100" : "translate-y-10 opacity-0"}`}
             style={{ transitionDelay: "1000ms" }}
           >
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 hover:scale-105 transition-transform duration-300 cursor-pointer">
               <div className="p-2 bg-white/20 rounded-full backdrop-blur-sm">
                 <CheckCircle className="h-4 w-4 text-valasys-green" />
               </div>
@@ -422,7 +451,7 @@ export default function FreeTrial() {
                 SOC 2 Compliant
               </span>
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 hover:scale-105 transition-transform duration-300 cursor-pointer">
               <div className="p-2 bg-white/20 rounded-full backdrop-blur-sm">
                 <Shield className="h-4 w-4 text-valasys-blue" />
               </div>
