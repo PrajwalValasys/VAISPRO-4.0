@@ -19,52 +19,212 @@ import {
   Megaphone,
   Mail,
   Brain,
+  Clock,
+  RefreshCw,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
+import { toast } from "sonner";
 import IntegrationsFooter from "@/components/auth/IntegrationsFooter";
 import AssociationPartners from "@/components/auth/AssociationPartners";
+import {
+  verifyEmailOTP,
+  resendEmailOTP,
+  selectAuth,
+  selectIsLoading,
+  selectNewUserDetails,
+  clearError,
+} from "@/store/reducers/authSlice";
+import { AppDispatch } from "@/store";
 
 export default function EmailVerification() {
-  const [mounted, setMounted] = useState(false);
-  const [otpValue, setOtpValue] = useState("");
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [remaining, setRemaining] = useState(180);
+  const dispatch = useDispatch<AppDispatch>();
   const navigate = useNavigate();
   const location = useLocation() as any;
+  const { isLoading, error } = useSelector(selectAuth);
+  const newUserDetails = useSelector(selectNewUserDetails);
+  
+  const [mounted, setMounted] = useState(false);
+  const [otpValue, setOtpValue] = useState("");
+  const [validationError, setValidationError] = useState("");
+  const [otpError, setOtpError] = useState("");
+  
+  // Timer management
+  const time = 180; // 3 minutes
+  const initialTimerValue = localStorage.getItem("otpTimerEndTime")
+    ? Math.ceil(
+        (parseInt(localStorage.getItem("otpTimerEndTime")!) - new Date().getTime()) / 1000
+      )
+    : time;
+  
+  const [timer, setTimer] = useState(initialTimerValue);
+  const [isTimerRunning, setIsTimerRunning] = useState(initialTimerValue > 0);
 
+  // Get email from location state, Redux state, or localStorage
   const signupEmail = useMemo(() => {
     const fromState = location?.state?.email as string | undefined;
     if (fromState) return fromState;
+    
+    // Try to get from Redux state
+    if (newUserDetails.newUserDetails?.username) {
+      return newUserDetails.newUserDetails.username;
+    }
+    
     try {
       const stored = localStorage.getItem("signupEmail");
       return stored || "";
     } catch (e) {
       return "";
     }
-  }, [location?.state]);
-
-  useEffect(() => setMounted(true), []);
+  }, [location?.state, newUserDetails.newUserDetails?.username]);
 
   useEffect(() => {
-    if (remaining <= 0) return;
-    const id = setInterval(() => {
-      setRemaining((s) => (s > 0 ? s - 1 : 0));
-    }, 1000);
-    return () => clearInterval(id);
-  }, [remaining]);
+    setMounted(true);
+  }, []);
+
+  // Redirect if no email
+  useEffect(() => {
+    if (!signupEmail) {
+      navigate("/free-trial");
+    }
+  }, [signupEmail, navigate]);
+
+  // Clear errors on unmount
+  useEffect(() => {
+    return () => {
+      dispatch(clearError());
+    };
+  }, [dispatch]);
+
+  // Robust timer using recursive setTimeout to handle browser throttling
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+    let startTime = Date.now();
+    let lastExecutionTime = Date.now();
+    let initialTimer = timer;
+
+    function updateTimer() {
+      const now = Date.now();
+      const elapsed = now - lastExecutionTime;
+
+      if (!document.hidden && isTimerRunning) {
+        // Calculate actual time passed since start
+        const totalElapsed = Math.floor((now - startTime) / 1000);
+        const newTimer = Math.max(0, initialTimer - totalElapsed);
+        setTimer(newTimer);
+        lastExecutionTime = now;
+
+        if (newTimer <= 0) {
+          setIsTimerRunning(false);
+          localStorage.removeItem("otpTimerEndTime");
+          localStorage.removeItem("otp");
+          return; // Stop the timer
+        }
+      }
+
+      // Dynamic delay: shorter when tab is visible, longer when hidden
+      const delay = document.hidden ? 5000 : Math.max(1000 - (elapsed % 1000), 0);
+
+      if (isTimerRunning) {
+        timeoutId = setTimeout(updateTimer, delay);
+      }
+    }
+
+    if (isTimerRunning && timer > 0) {
+      updateTimer();
+    }
+
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [isTimerRunning]); // Only depend on isTimerRunning
+
+  useEffect(() => {
+    if (isTimerRunning) {
+      const timerEndTime = new Date().getTime() + timer * 1000;
+      localStorage.setItem("otpTimerEndTime", timerEndTime.toString());
+      localStorage.setItem("otp", otpValue);
+    }
+  }, [timer, otpValue, isTimerRunning]);
+
+  const handleOtpChange = (value: string) => {
+    // Check for non-numeric characters
+    if (value && !/^\d+$/.test(value)) {
+      setValidationError("Please enter only numbers");
+    } else {
+      setValidationError("");
+    }
+    // Filter out non-numeric characters
+    const filteredOtp = value.replace(/\D/g, "");
+    setOtpValue(filteredOtp);
+    setOtpError(""); // Clear error when user types
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (otpValue.length !== 4) return;
-    setIsVerifying(true);
-    await new Promise((r) => setTimeout(r, 1000));
-    setIsVerifying(false);
-    navigate("/login");
+    
+    if (otpValue.length !== 4) {
+      setOtpError("Please enter a valid 4-digit OTP");
+      return;
+    }
+
+    if (!isTimerRunning) {
+      setOtpError("OTP has expired. Please request a new one.");
+      return;
+    }
+
+    try {
+      const payload = { email: signupEmail, otp: otpValue };
+      const result = await dispatch(verifyEmailOTP(payload));
+      
+      if (result.type === "auth/verifyEmailOTP/fulfilled") {
+        clearOtpExpiry();
+        toast.success("Email verified successfully! Welcome to VAIS!");
+        navigate("/login");
+      } else if (result.type === "auth/verifyEmailOTP/rejected") {
+        setOtpError(result.payload as string || "Invalid OTP. Please try again.");
+      }
+    } catch (error) {
+      console.error("OTP verification error:", error);
+      setOtpError("Something went wrong. Please try again.");
+    }
   };
 
-  const handleResend = () => {
-    setRemaining(180);
-    setOtpValue("");
+  const handleResend = async () => {
+    try {
+      const userId = newUserDetails.newUserDetails?.user_id;
+      const payload = { email: signupEmail, user_id: userId };
+      
+      const result = await dispatch(resendEmailOTP(payload));
+      
+      if (result.type === "auth/resendEmailOTP/fulfilled") {
+        setOtpValue("");
+        setTimer(time);
+        setIsTimerRunning(true);
+        setOtpError("");
+        localStorage.removeItem("otpTimerEndTime");
+        localStorage.removeItem("otp");
+        toast.success("New OTP sent to your email!");
+      }
+    } catch (error) {
+      console.error("Resend OTP error:", error);
+      toast.error("Failed to resend OTP. Please try again.");
+    }
+  };
+
+  const clearOtpExpiry = () => {
+    setTimer(time);
+    setIsTimerRunning(false);
+    localStorage.removeItem("otpTimerEndTime");
+    localStorage.removeItem("otp");
+  };
+
+  const formatTime = (time: number) => {
+    const minutes = Math.floor(time / 60);
+    const seconds = time % 60;
+    return `${minutes}:${seconds < 10 ? `0${seconds}` : seconds}`;
   };
 
   const aiElements = [
@@ -91,21 +251,6 @@ export default function EmailVerification() {
     },
   ];
 
-  const integrations = [
-    {
-      name: "Salesforce",
-      logo: "https://upload.wikimedia.org/wikipedia/commons/f/f9/Salesforce.com_logo.svg",
-      description: "CRM Integration",
-      color: "bg-blue-500",
-    },
-    {
-      name: "HubSpot",
-      logo: "https://www.hubspot.com/hubfs/HubSpot_Logos/HubSpot-Inversed-Favicon.png",
-      description: "Marketing Automation",
-      color: "bg-orange-500",
-    },
-  ];
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-valasys-gray-50 via-white to-valasys-orange/5 lg:grid lg:grid-cols-2 relative overflow-hidden">
       <div className="absolute inset-0 overflow-hidden">
@@ -124,47 +269,6 @@ export default function EmailVerification() {
             }}
           />
         ))}
-        <svg
-          className="absolute inset-0 w-full h-full opacity-10"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <defs>
-            <linearGradient
-              id="neural-gradient"
-              x1="0%"
-              y1="0%"
-              x2="100%"
-              y2="100%"
-            >
-              <stop offset="0%" stopColor="#FF6A00" stopOpacity="0.3" />
-              <stop offset="50%" stopColor="#1A73E8" stopOpacity="0.2" />
-              <stop offset="100%" stopColor="#00C48C" stopOpacity="0.3" />
-            </linearGradient>
-          </defs>
-          <path
-            d="M50,200 Q200,100 350,200 T650,200"
-            stroke="url(#neural-gradient)"
-            strokeWidth="2"
-            fill="none"
-            className="animate-pulse"
-          />
-          <path
-            d="M100,300 Q300,200 500,300 T800,300"
-            stroke="url(#neural-gradient)"
-            strokeWidth="1.5"
-            fill="none"
-            className="animate-pulse"
-            style={{ animationDelay: "1s" }}
-          />
-          <path
-            d="M0,400 Q200,300 400,400 T700,400"
-            stroke="url(#neural-gradient)"
-            strokeWidth="1"
-            fill="none"
-            className="animate-pulse"
-            style={{ animationDelay: "2s" }}
-          />
-        </svg>
       </div>
 
       <div
@@ -178,13 +282,31 @@ export default function EmailVerification() {
                 alt="Valasys AI Score logo"
                 className="mx-auto h-12 w-auto object-contain mb-4"
               />
+
+              {/* Timer Status */}
+              <div className="mb-4">
+                {isTimerRunning ? (
+                  <div className="flex items-center justify-center space-x-2 text-valasys-green">
+                    <Clock className="h-4 w-4" />
+                    <span className="text-sm font-medium">
+                      OTP expires in: {formatTime(timer)}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center space-x-2 text-red-500">
+                    <Clock className="h-4 w-4" />
+                    <span className="text-sm font-medium">OTP Expired</span>
+                  </div>
+                )}
+              </div>
+
               <CardTitle className="text-lg font-semibold text-valasys-gray-900">
                 Enter Email Verification Code
               </CardTitle>
               <p className="text-sm text-valasys-gray-600">
                 {"We've sent a code to "}
                 <span className="font-medium text-valasys-gray-900">
-                  {signupEmail || "your email"}
+                  {signupEmail ? signupEmail.replace(/(?<=.{3}).(?=.*@)/g, '*') : "your email"}
                 </span>
               </p>
             </CardHeader>
@@ -199,71 +321,106 @@ export default function EmailVerification() {
                     <InputOTP
                       maxLength={4}
                       value={otpValue}
-                      onChange={setOtpValue}
+                      onChange={handleOtpChange}
+                      className="gap-2"
                     >
-                      <InputOTPGroup className="gap-3">
+                      <InputOTPGroup>
                         <InputOTPSlot
                           index={0}
-                          className="rounded-md border border-input"
+                          className="border-valasys-gray-300 focus:border-valasys-orange focus:ring-valasys-orange/20 w-14 h-14 text-lg"
                         />
                         <InputOTPSlot
                           index={1}
-                          className="rounded-md border border-input"
+                          className="border-valasys-gray-300 focus:border-valasys-orange focus:ring-valasys-orange/20 w-14 h-14 text-lg"
                         />
                         <InputOTPSlot
                           index={2}
-                          className="rounded-md border border-input"
+                          className="border-valasys-gray-300 focus:border-valasys-orange focus:ring-valasys-orange/20 w-14 h-14 text-lg"
                         />
                         <InputOTPSlot
                           index={3}
-                          className="rounded-md border border-input"
+                          className="border-valasys-gray-300 focus:border-valasys-orange focus:ring-valasys-orange/20 w-14 h-14 text-lg"
                         />
                       </InputOTPGroup>
                     </InputOTP>
                   </div>
-                  <p
-                    className={`text-sm font-medium text-center ${remaining <= 60 ? "text-red-600" : "text-valasys-green"}`}
-                    aria-live="polite"
-                  >
-                    {String(Math.floor(remaining / 60)).padStart(2, "0")}:
-                    {String(remaining % 60).padStart(2, "0")}
-                  </p>
-                  <p className="text-sm text-center text-valasys-gray-700">
-                    Didn't receive code?{" "}
-                    <button
-                      type="button"
-                      onClick={handleResend}
-                      className="text-valasys-orange hover:text-valasys-orange-light underline"
-                    >
-                      Resend Code
-                    </button>
-                  </p>
+                  
+                  {/* Error Messages */}
+                  {validationError && (
+                    <p className="text-red-500 text-xs text-center mt-2">{validationError}</p>
+                  )}
+                  {otpError && (
+                    <p className="text-red-500 text-xs text-center mt-2">{otpError}</p>
+                  )}
                 </div>
-                <div className="flex items-center justify-between">
+
+                <div className="flex items-center justify-between gap-3">
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => navigate(-1)}
-                    className="gap-2"
+                    onClick={() => navigate("/create-account")}
+                    className="gap-2 border-valasys-gray-300 text-valasys-gray-700 hover:bg-valasys-gray-50"
                   >
                     <ArrowLeft className="h-4 w-4" /> Back
                   </Button>
                   <Button
                     type="submit"
-                    disabled={isVerifying || otpValue.length !== 4}
-                    className="bg-valasys-orange hover:bg-valasys-orange-light text-white font-medium py-3 shadow-lg hover:shadow-xl transition-all duration-200"
+                    disabled={isLoading || otpValue.length !== 4 || validationError || !isTimerRunning}
+                    className="bg-valasys-orange hover:bg-valasys-orange-light text-white font-medium py-3 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-102"
                   >
-                    {isVerifying ? (
+                    {isLoading ? (
                       <div className="flex items-center space-x-2">
                         <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                         <span>Verifying...</span>
                       </div>
                     ) : (
-                      <>Verify</>
+                      <>
+                        <Shield className="mr-2 h-4 w-4" />
+                        Verify Email
+                      </>
                     )}
                   </Button>
                 </div>
               </form>
+
+              {/* Resend OTP */}
+              <div className="text-center pt-4 border-t border-valasys-gray-200">
+                <p className="text-sm text-valasys-gray-600 mb-2">
+                  Didn't receive the code?
+                </p>
+                <button
+                  onClick={handleResend}
+                  disabled={isTimerRunning || isLoading}
+                  className={`text-sm font-medium transition-colors ${
+                    !isTimerRunning && !isLoading
+                      ? "text-valasys-orange hover:text-valasys-orange-light cursor-pointer"
+                      : "text-valasys-gray-400 cursor-not-allowed"
+                  }`}
+                >
+                  {!isTimerRunning && !isLoading ? (
+                    <div className="flex items-center justify-center space-x-1">
+                      <RefreshCw className="h-3 w-3" />
+                      <span>Resend Code</span>
+                    </div>
+                  ) : (
+                    `Resend available in ${formatTime(timer)}`
+                  )}
+                </button>
+              </div>
+
+              {/* Help link */}
+              <div className="text-center">
+                <p className="text-sm text-valasys-gray-600">
+                  Already verified?{" "}
+                  <a 
+                    href="/login" 
+                    onClick={clearOtpExpiry}
+                    className="text-valasys-orange hover:text-valasys-orange-light font-medium transition-colors duration-200 hover:underline"
+                  >
+                    Sign In
+                  </a>
+                </p>
+              </div>
             </CardContent>
           </Card>
 
@@ -284,50 +441,49 @@ export default function EmailVerification() {
             style={{ transitionDelay: "150ms" }}
           >
             <h2 className="text-2xl font-bold text-valasys-gray-900">
-              Welcome back to <span className="text-valasys-orange">VAIS</span>
+              Almost There! <span className="text-valasys-orange">Verify Your Email</span>
             </h2>
             <p className="text-valasys-gray-600">
-              Access your AI-powered scoring platform to unlock deeper insights,
-              accelerate decision-making, and drive meaningful business
-              outcomes.
+              We've sent a secure verification code to your email address. 
+              Enter it below to activate your account and start your AI journey.
             </p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex items-start space-x-3">
+                <div className="w-8 h-8 rounded-lg border border-valasys-orange text-valasys-orange flex items-center justify-center shadow-sm">
+                  <Mail className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="font-semibold text-valasys-gray-900">
+                    Email Security
+                  </div>
+                  <p className="text-xs text-valasys-gray-600">
+                    Secure verification protects your account
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start space-x-3">
+                <div className="w-8 h-8 rounded-lg border border-valasys-orange text-valasys-orange flex items-center justify-center shadow-sm">
+                  <Clock className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="font-semibold text-valasys-gray-900">
+                    Quick Process
+                  </div>
+                  <p className="text-xs text-valasys-gray-600">
+                    One-time code expires in 3 minutes
+                  </p>
+                </div>
+              </div>
               <div className="flex items-start space-x-3">
                 <div className="w-8 h-8 rounded-lg border border-valasys-orange text-valasys-orange flex items-center justify-center shadow-sm">
                   <Brain className="w-4 h-4" />
                 </div>
                 <div>
                   <div className="font-semibold text-valasys-gray-900">
-                    AI-Powered Insights
+                    Instant Access
                   </div>
                   <p className="text-xs text-valasys-gray-600">
-                    Advanced algorithms that deliver actionable intelligence
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start space-x-3">
-                <div className="w-8 h-8 rounded-lg border border-valasys-orange text-valasys-orange flex items-center justify-center shadow-sm">
-                  <TrendingUp className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="font-semibold text-valasys-gray-900">
-                    Scoring System
-                  </div>
-                  <p className="text-xs text-valasys-gray-600">
-                    AI-driven lead and account ranking.
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start space-x-3">
-                <div className="w-8 h-8 rounded-lg border border-valasys-orange text-valasys-orange flex items-center justify-center shadow-sm">
-                  <Megaphone className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="font-semibold text-valasys-gray-900">
-                    Campaign Management
-                  </div>
-                  <p className="text-xs text-valasys-gray-600">
-                    Campaign tracking with reports and insights.
+                    Get immediate access to AI insights
                   </p>
                 </div>
               </div>
@@ -337,10 +493,10 @@ export default function EmailVerification() {
                 </div>
                 <div>
                   <div className="font-semibold text-valasys-gray-900">
-                    Real-time Analytics
+                    Free Trial Ready
                   </div>
                   <p className="text-xs text-valasys-gray-600">
-                    Live data processing and instant reporting
+                    5 days of full platform access awaits
                   </p>
                 </div>
               </div>
@@ -381,67 +537,17 @@ export default function EmailVerification() {
             className={`transform transition-all duration-700 ease-out ${mounted ? "translate-y-0 opacity-100" : "translate-y-6 opacity-0"}`}
             style={{ transitionDelay: "300ms" }}
           >
-            <div className="md:block">
-              <div className="space-y-4 hidden">
-                <div className="text-center space-y-2">
-                  <h3 className="text-xl font-semibold text-valasys-gray-900 flex items-center justify-center space-x-2">
-                    <Globe
-                      className="h-5 w-5 text-valasys-blue animate-spin"
-                      style={{ animationDuration: "6s" }}
-                    />
-                    <span>Powered by 50+ Integrations</span>
-                  </h3>
-                  <p className="text-valasys-gray-600 text-sm">
-                    Connect seamlessly with your existing tech stack
-                  </p>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  {integrations.map((integration, index) => (
-                    <div
-                      key={index}
-                      className={`bg-white/80 backdrop-blur-sm rounded-xl p-4 text-center hover:bg-white/90 transition-all duration-300 group cursor-pointer hover:scale-105 transform shadow-lg border border-white/30 ${mounted ? "scale-100 opacity-100" : "scale-95 opacity-0"}`}
-                      style={{ transitionDelay: `${400 + index * 100}ms` }}
-                    >
-                      <div className="h-10 w-10 mx-auto mb-3 bg-white rounded-lg p-2 group-hover:scale-110 group-hover:rotate-3 transition-all duration-200 shadow-md">
-                        <img
-                          src={integration.logo}
-                          alt={integration.name}
-                          className="w-full h-full object-contain"
-                          onError={(e) => {
-                            (
-                              e.currentTarget as HTMLImageElement
-                            ).style.display = "none";
-                            (
-                              e.currentTarget.parentElement as HTMLElement
-                            ).innerHTML =
-                              `<div class='w-full h-full ${integration.color} rounded flex items-center justify-center text-white text-xs font-bold'>${integration.name[0]}</div>`;
-                          }}
-                        />
-                      </div>
-                      <h4 className="font-semibold text-valasys-gray-900 text-sm group-hover:text-valasys-orange transition-colors duration-200">
-                        {integration.name}
-                      </h4>
-                      <p className="text-xs text-valasys-gray-600 group-hover:text-valasys-gray-800 transition-colors duration-200">
-                        {integration.description}
-                      </p>
-                    </div>
-                  ))}
-                </div>
+            <div className="space-y-4">
+              <div className="text-center space-y-2">
+                <h3 className="text-xl font-semibold text-valasys-gray-900 flex items-center justify-center space-x-2">
+                  <Sparkles className="h-5 w-5 text-valasys-orange" />
+                  <span>In Association With</span>
+                </h3>
+                <p className="text-valasys-gray-600 text-sm">
+                  Trusted data and reviews partners
+                </p>
               </div>
-              <div className="hidden" aria-hidden="true" />
-              <div className="hidden" aria-hidden="true" />
-              <div className="space-y-4">
-                <div className="text-center space-y-2">
-                  <h3 className="text-xl font-semibold text-valasys-gray-900 flex items-center justify-center space-x-2">
-                    <Sparkles className="h-5 w-5 text-valasys-orange" />
-                    <span>In Association With</span>
-                  </h3>
-                  <p className="text-valasys-gray-600 text-sm">
-                    Trusted data and reviews partners
-                  </p>
-                </div>
-                <AssociationPartners />
-              </div>
+              <AssociationPartners />
             </div>
           </div>
 
@@ -449,7 +555,7 @@ export default function EmailVerification() {
             className={`flex items-center justify-center space-x-6 pt-6 border-t border-white/20 transform transition-all duration-700 ${mounted ? "translate-y-0 opacity-100" : "translate-y-10 opacity-0"}`}
             style={{ transitionDelay: "1000ms" }}
           >
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 hover:scale-105 transition-transform duration-300 cursor-pointer">
               <div className="p-2 bg-white/20 rounded-full backdrop-blur-sm">
                 <CheckCircle className="h-4 w-4 text-valasys-green" />
               </div>
@@ -457,7 +563,7 @@ export default function EmailVerification() {
                 SOC 2 Compliant
               </span>
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 hover:scale-105 transition-transform duration-300 cursor-pointer">
               <div className="p-2 bg-white/20 rounded-full backdrop-blur-sm">
                 <Shield className="h-4 w-4 text-valasys-blue" />
               </div>
