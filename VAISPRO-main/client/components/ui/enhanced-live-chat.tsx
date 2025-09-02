@@ -291,7 +291,7 @@ export function EnhancedLiveChat({
           prev
             .map((msg) =>
               msg.sender === "user" && msg.status === "sending"
-                ? { ...msg, status: "read" }
+                ? { ...msg, status: "read" as const }
                 : msg,
             )
             .concat(agentMessage),
