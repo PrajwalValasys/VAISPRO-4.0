@@ -65,7 +65,7 @@ export default function CreateAccount() {
     formState: { errors, isValid, isDirty },
     setValue,
     watch,
-  } = useForm<RegisterData>({
+  } = useForm({
     resolver: zodResolver(registerSchema),
     defaultValues: {
       first_name: "",
@@ -474,7 +474,7 @@ export default function CreateAccount() {
                   <Checkbox
                     id="terms"
                     checked={isCheckboxChecked}
-                    onCheckedChange={setIsCheckboxChecked}
+                    onCheckedChange={(checked) => setIsCheckboxChecked(checked === true)}
                     className="mt-1 border-valasys-gray-300 text-valasys-orange focus:ring-valasys-orange/20"
                   />
                   <label
